@@ -1,12 +1,15 @@
 import { Router } from 'express';
-import { getCalendarEpisodes, getIcsFeed } from '../controllers/calendarController.js';
+import { getIcsFeed, getCalendarEpisodes } from '../controllers/calendarController.js';
+import { authenticateToken, requireSelf } from '../middleware/auth.js';
 
 const router = Router();
 
-// GET /api/calendar/:userId/feed.ics (Dynamic RFC-5545 iCalendar feed)
-router.get('/:userId/feed.ics', getIcsFeed);
+// GET /api/calendar/feed/:icsToken.ics
+// Public by design - calendar clients cannot authenticate. The opaque token IS
+// the credential, which is why it is not the userId.
+router.get('/feed/:icsToken.ics', getIcsFeed);
 
-// GET /api/calendar/:userId/episodes (JSON structured schedule)
-router.get('/:userId/episodes', getCalendarEpisodes);
+// In-app calendar data is normal private API traffic.
+router.get('/:userId/episodes', authenticateToken, requireSelf, getCalendarEpisodes);
 
 export default router;

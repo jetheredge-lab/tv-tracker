@@ -2,9 +2,10 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../services/prisma.js';
+import { JWT_SECRET } from '../config/auth.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'tvtracker-jwt-secret-key-default';
+// Secret is validated once at startup in config/auth.ts.
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
 
 export const register = async (req: Request, res: Response): Promise<void> => {

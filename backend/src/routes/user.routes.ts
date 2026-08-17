@@ -1,23 +1,29 @@
 import { Router } from 'express';
 import {
-  getUserProfile,
   syncUser,
-  triggerCron,
+  getUserProfile,
   updatePreferences,
+  deleteAccount,
+  triggerCron,
 } from '../controllers/userController.js';
+import { authenticateToken, optionalAuth, requireSelf } from '../middleware/auth.js';
 
 const router = Router();
 
-// POST /api/users/sync
-router.post('/sync', syncUser);
+// POST /api/users/sync - bootstrap. Unauthenticated by necessity: this is how
+// a device claims its account and receives its first token. The device secret
+// in the body is what authorises it.
+router.post('/sync', optionalAuth, syncUser);
 
-// GET /api/users/:userId
-router.get('/:userId', getUserProfile);
+// Everything below operates on a specific account, so it needs both a valid
+// token and a check that the token belongs to the account being touched.
+router.get('/:userId', authenticateToken, requireSelf, getUserProfile);
+router.patch('/:userId', authenticateToken, requireSelf, updatePreferences);
 
-// PATCH /api/users/:userId
-router.patch('/:userId', updatePreferences);
+// DELETE /api/users/:userId - required by Google Play for apps with accounts.
+router.delete('/:userId', authenticateToken, requireSelf, deleteAccount);
 
-// POST /api/cron/trigger (Manual testing)
+// Gated internally by CRON_SECRET; disabled when that is unset.
 router.post('/cron/trigger', triggerCron);
 
 export default router;

@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'tvtracker-jwt-secret-key-default';
+import { JWT_SECRET } from '../config/auth.js';
 
 export interface AuthPayload {
   userId: string;
@@ -12,19 +11,20 @@ export interface AuthenticatedRequest extends Request {
   user?: AuthPayload;
 }
 
+const extractToken = (req: Request): string | null => {
+  const header = req.headers['authorization'];
+  return header && header.startsWith('Bearer ') ? header.substring(7) : null;
+};
+
 /**
- * Strict authentication middleware
- * Rejects requests without a valid Bearer JWT token
+ * Rejects requests without a valid Bearer JWT.
  */
 export const authenticateToken = (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): void => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ')
-    ? authHeader.substring(7)
-    : null;
+  const token = extractToken(req);
 
   if (!token) {
     res.status(401).json({
@@ -35,10 +35,9 @@ export const authenticateToken = (
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
-    req.user = decoded;
+    req.user = jwt.verify(token, JWT_SECRET) as AuthPayload;
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({
       error: 'Unauthorized',
       message: 'Invalid or expired authentication token.',
@@ -47,26 +46,51 @@ export const authenticateToken = (
 };
 
 /**
- * Optional authentication middleware
- * Attaches user if token is present and valid, but allows guest access
+ * Attaches the user when a valid token is present, but allows guests through.
+ * Only appropriate on routes that expose no user-specific data.
  */
 export const optionalAuth = (
   req: AuthenticatedRequest,
   _res: Response,
   next: NextFunction
 ): void => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ')
-    ? authHeader.substring(7)
-    : null;
-
+  const token = extractToken(req);
   if (token) {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
-      req.user = decoded;
+      req.user = jwt.verify(token, JWT_SECRET) as AuthPayload;
     } catch {
-      // Ignore invalid optional tokens
+      // An invalid optional token is simply ignored.
     }
+  }
+  next();
+};
+
+/**
+ * Ensures the caller may only act on their own record.
+ *
+ * Must run AFTER authenticateToken. Routes carry the target in :userId, and
+ * without this check a valid token for user A could read or modify user B
+ * simply by changing the path.
+ */
+export const requireSelf = (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): void => {
+  const caller = req.user?.userId;
+
+  if (!caller) {
+    res.status(401).json({ error: 'Unauthorized', message: 'Authentication required.' });
+    return;
+  }
+
+  const target = req.params.userId;
+  if (target && target !== caller) {
+    res.status(403).json({
+      error: 'Forbidden',
+      message: 'You may only access your own account.',
+    });
+    return;
   }
 
   next();

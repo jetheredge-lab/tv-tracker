@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
+import { useUserStore } from './useUserStore';
 import { UserProfile } from '../types';
 
 const AUTH_TOKEN_KEY = '@tvtracker_auth_token';
@@ -86,6 +87,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(user)),
       ]);
 
+
+      // The token identifies this account, so the local identity must match it
+      // or every subsequent request would be a cross-account access (403).
+      await useUserStore.getState().adoptAccount(user.id);
       set({
         token,
         user,
@@ -130,6 +135,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(user)),
       ]);
 
+
+      // The token identifies this account, so the local identity must match it
+      // or every subsequent request would be a cross-account access (403).
+      await useUserStore.getState().adoptAccount(user.id);
       set({
         token,
         user,

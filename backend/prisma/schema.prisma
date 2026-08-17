@@ -19,6 +19,14 @@ model User {
   id                 String                    @id @default(cuid())
   email              String?                   @unique
   passwordHash       String?
+  // Anonymous device identity: the app generates a random secret on first
+  // launch and proves it on every sync. Without this a userId alone was a
+  // bearer credential - anyone who knew it could read the account.
+  deviceSecretHash   String?
+  // Opaque token for the .ics subscription URL. Calendar clients cannot
+  // send an Authorization header, so the URL itself is the capability -
+  // it must therefore NOT contain the userId.
+  icsToken           String?                   @unique
   name               String?
   pushToken          String?
   pushAlertsEnabled  Boolean                   @default(true)

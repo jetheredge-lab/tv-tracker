@@ -2,23 +2,37 @@ import { Request, Response } from 'express';
 import icsCalendarService from '../services/ics.js';
 import prisma from '../services/prisma.js';
 
+/**
+ * Serves the .ics subscription feed.
+ *
+ * Calendar clients (Google, Apple) fetch this URL on a schedule and cannot
+ * send an Authorization header, so the URL itself has to be the credential.
+ * It is keyed on an opaque per-user icsToken rather than the userId, so
+ * pasting the feed into a third-party calendar never discloses the account id
+ * that authenticates the rest of the API.
+ */
 export const getIcsFeed = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { userId } = req.params;
-    if (!userId) {
-      res.status(400).send('userId is required');
+    const { icsToken } = req.params;
+    if (!icsToken) {
+      res.status(400).send('Feed token is required');
       return;
     }
 
-    const icsContent = await icsCalendarService.generateUserIcsFeed(userId);
+    const user = await prisma.user.findUnique({ where: { icsToken } });
+    if (!user) {
+      res.status(404).send('Feed not found');
+      return;
+    }
+
+    const icsContent = await icsCalendarService.generateUserIcsFeed(user.id);
 
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-    res.setHeader('Content-Disposition', `inline; filename="tvtracker-${userId}.ics"`);
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.status(200).send(icsContent);
+    res.setHeader('Content-Disposition', 'inline; filename="tvtracker.ics"');
+    res.send(icsContent);
   } catch (error) {
     console.error('[calendarController] getIcsFeed error:', error);
-    res.status(500).send('Error generating calendar feed');
+    res.status(500).send('Failed to generate calendar feed');
   }
 };
 

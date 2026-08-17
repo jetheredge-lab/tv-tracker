@@ -1,19 +1,18 @@
 import { Router } from 'express';
 import {
-  dismissRecommendation,
   getPersonalizedRecommendations,
+  dismissRecommendation,
 } from '../controllers/recommendationController.js';
-import { optionalAuth } from '../middleware/auth.js';
+import { authenticateToken, requireSelf } from '../middleware/auth.js';
 
 const router = Router();
 
-router.use(optionalAuth);
+// Recommendations are derived from a user's watchlist, so they are personal.
+router.use(authenticateToken);
 
-// GET /api/recommendations (or /api/recommendations/:userId)
 router.get('/', getPersonalizedRecommendations);
-router.get('/:userId', getPersonalizedRecommendations);
+router.get('/:userId', requireSelf, getPersonalizedRecommendations);
 
-// POST /api/recommendations/dismiss
 router.post('/dismiss', dismissRecommendation);
 
 export default router;

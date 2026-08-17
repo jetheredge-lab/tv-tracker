@@ -1,28 +1,27 @@
 import { Router } from 'express';
 import {
-  addToWatchlist,
   getUserWatchlist,
-  removeFromWatchlist,
+  addToWatchlist,
   updateWatchlist,
+  removeFromWatchlist,
 } from '../controllers/watchlistController.js';
-import { optionalAuth } from '../middleware/auth.js';
+import { authenticateToken, requireSelf } from '../middleware/auth.js';
 
 const router = Router();
 
-// Allow authenticated JWT or explicit userId param
-router.use(optionalAuth);
+// A watchlist is private data, so every route here requires a token. The
+// controllers already prefer req.user.userId over anything in the request, so
+// a caller cannot act on someone else by passing a different id in the body.
+router.use(authenticateToken);
 
-// GET /api/watchlist (or /api/watchlist/:userId)
 router.get('/', getUserWatchlist);
-router.get('/:userId', getUserWatchlist);
+router.get('/:userId', requireSelf, getUserWatchlist);
 
-// POST /api/watchlist
 router.post('/', addToWatchlist);
 
-// PATCH /api/watchlist/:id
+// :id here is a watchlist item, not a user - the controllers verify the item
+// belongs to req.user.userId before touching it.
 router.patch('/:id', updateWatchlist);
-
-// DELETE /api/watchlist/:id
 router.delete('/:id', removeFromWatchlist);
 
 export default router;

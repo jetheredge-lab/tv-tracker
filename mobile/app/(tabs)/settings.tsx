@@ -23,6 +23,7 @@ import {
   LogIn,
   Server,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react-native';
 import { useUserStore } from '../../store/useUserStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -49,6 +50,7 @@ export default function SettingsScreen() {
     preferredRegion,
     updatePreferences,
     getIcsFeedUrl,
+    deleteAccount,
   } = useUserStore();
 
   const { user: authUser, isAuthenticated, logout } = useAuthStore();
@@ -58,9 +60,9 @@ export default function SettingsScreen() {
   const [savingEmail, setSavingEmail] = useState(false);
 
   const activeUserId = authUser?.id || userId;
-  const icsUrl = activeUserId
-    ? `${API_BASE_URL}/api/calendar/${activeUserId}/feed.ics`
-    : getIcsFeedUrl();
+  // Built from the per-user icsToken by the store. It must never contain the
+  // userId, because this link gets pasted into third-party calendar services.
+  const icsUrl = getIcsFeedUrl();
 
   const handleCopyIcs = async () => {
     if (!icsUrl) return;
@@ -78,6 +80,33 @@ export default function SettingsScreen() {
     await updatePreferences({ email: inputEmail.trim() });
     setSavingEmail(false);
     Alert.alert('Email Saved', 'Your notification email has been updated.');
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This permanently deletes your account, your watchlist and all associated data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Everything',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await deleteAccount();
+            if (result.success) {
+              if (isAuthenticated) await logout();
+              Alert.alert(
+                'Account Deleted',
+                'Your account and all associated data have been permanently deleted.'
+              );
+              router.replace('/');
+            } else {
+              Alert.alert('Could Not Delete Account', result.error || 'Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleLogout = () => {
@@ -351,6 +380,28 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
+        {/* Danger zone - Google Play requires an in-app account deletion
+            path for any app that offers account creation. */}
+        <View className="mt-8 mb-4">
+            <Text className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+              Danger Zone
+            </Text>
+            <View className="bg-card border border-red-500/30 rounded-2xl p-4">
+              <Text className="text-sm font-bold text-zinc-100 mb-1">Delete Account</Text>
+              <Text className="text-xs text-zinc-400 mb-3">
+                Permanently deletes your account, watchlist and all associated data.
+                This cannot be undone.
+              </Text>
+              <TouchableOpacity
+                onPress={handleDeleteAccount}
+                activeOpacity={0.8}
+                className="bg-red-500/10 border border-red-500/40 px-4 py-2.5 rounded-xl flex-row items-center justify-center"
+              >
+                <Trash2 size={14} color="#f87171" className="mr-2" />
+                <Text className="text-xs font-bold text-red-400">Delete My Account</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         {/* API Attribution */}
         <View className="items-center py-4">
           <Text className="text-xs text-zinc-500">
