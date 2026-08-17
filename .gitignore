@@ -35,3 +35,10 @@ postgres_data/
 *.pem
 .vscode/
 .idea/
+
+# Backup copies of env files (these hold real secrets and are NOT
+# matched by the .env patterns above)
+*.bak
+*.bak_*
+.env.bak*
+*/.env.bak*

@@ -44,9 +44,6 @@
     "extra": {
       "router": {
         "origin": false
-      },
-      "eas": {
-        "projectId": "tv-tracker-project-id"
       }
     }
   }
