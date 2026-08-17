@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // NativeWind v4 maps Tailwind onto RN styles via this preset.
+  presets: [require('nativewind/preset')],
   content: [
+    './index.js',
     './app/**/*.{js,jsx,ts,tsx}',
     './components/**/*.{js,jsx,ts,tsx}',
   ],

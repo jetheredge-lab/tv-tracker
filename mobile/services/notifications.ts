@@ -5,7 +5,9 @@ import Constants from 'expo-constants';
 // Configure foreground notification behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    // shouldShowAlert was split into banner + list in expo-notifications 0.29.
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
