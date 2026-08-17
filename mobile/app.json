@@ -48,7 +48,11 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "362dccf6-ab2b-4eaa-adda-a35899778263"
       }
-    }
+    },
+    "owner": "jetheredge1"
   }
 }
