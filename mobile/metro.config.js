@@ -1,23 +1,11 @@
 // Learn more https://docs.expo.io/guides/customizing-metro
 const { getDefaultConfig } = require('expo/metro-config');
 const { withNativeWind } = require('nativewind/metro');
-const path = require('path');
 
-// npm workspaces hoists deps (expo, react-native, expo-router) to the repo
-// root, above this project dir. Metro will not resolve modules outside its
-// root unless told about the workspace.
-// https://docs.expo.dev/guides/monorepos/
-const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '..');
-
-/** @type {import('expo/metro-config').MetroConfig} */
-const config = getDefaultConfig(projectRoot);
-
-config.watchFolders = [workspaceRoot];
-
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(workspaceRoot, 'node_modules'),
-];
+// Expo's default config already understands this npm-workspaces monorepo: it
+// watches the repo root and both workspaces, and resolves node_modules from
+// mobile/ and the root. Hand-rolled watchFolders / nodeModulesPaths overrides
+// are unnecessary here, and replacing watchFolders actually drops entries.
+const config = getDefaultConfig(__dirname);
 
 module.exports = withNativeWind(config, { input: './global.css' });
