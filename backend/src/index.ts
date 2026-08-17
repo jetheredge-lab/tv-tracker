@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import apiRouter from './routes/index.js';
+import { apiLimiter, authLimiter } from './middleware/rateLimit.js';
 import schedulerService from './services/scheduler.js';
 import prisma from './services/prisma.js';
 
@@ -11,7 +12,14 @@ import prisma from './services/prisma.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT || 4000);
+// Bind to loopback: the Cloudflare Tunnel connects over localhost, so the
+// port never needs to be reachable from the LAN. This is also what makes
+// the CF-Connecting-IP header trustworthy for rate limiting.
+const HOST = process.env.HOST || '127.0.0.1';
+
+// Trust only the loopback hop, so a client cannot forge forwarding headers.
+app.set('trust proxy', 'loopback');
 
 // Security and Logging Middlewares
 app.use(helmet({
@@ -43,6 +51,10 @@ app.get('/', (_req: Request, res: Response) => {
   });
 });
 
+// Rate limiting, mounted before the router so it also covers 404s under /api.
+app.use('/api', apiLimiter);
+app.use('/api/auth', authLimiter);
+
 // Register API Routes
 app.use('/api', apiRouter);
 
@@ -64,7 +76,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Start Server and Cron Scheduler
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`====================================================`);
   console.log(`🚀 TV Tracker API Server running on port ${PORT}`);
   console.log(`🌐 Base URL: http://localhost:${PORT}`);
