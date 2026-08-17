@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WatchlistStatus {
+  WATCHING
+  COMPLETED
+  PLAN_TO_WATCH
+  DROPPED
+  ENDED
+}
+
+model User {
+  id                 String                    @id @default(cuid())
+  email              String?                   @unique
+  passwordHash       String?
+  name               String?
+  pushToken          String?
+  pushAlertsEnabled  Boolean                   @default(true)
+  emailAlertsEnabled Boolean                   @default(true)
+  preferredRegion    String                    @default("US")
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  watchlists         Watchlist[]
+  dismissedRecs      DismissedRecommendation[]
+
+  @@map("users")
+}
+
+model Show {
+  id                 String                    @id @default(cuid())
+  tvmazeId           Int                       @unique
+  tmdbId             Int?                      @unique
+  title              String
+  summary            String?
+  posterUrl          String?
+  backdropUrl        String?
+  status             String                    @default("Running")
+  genres             String[]                  @default([])
+  network            String?
+  premiered          DateTime?
+  rating             Float?
+  updatedAt          DateTime                  @updatedAt
+  episodes           Episode[]
+  streamingProviders StreamingProvider[]
+  watchlists         Watchlist[]
+  dismissedRecs      DismissedRecommendation[]
+
+  @@index([title])
+  @@map("shows")
+}
+
+model Watchlist {
+  id              String          @id @default(cuid())
+  userId          String
+  showId          String
+  status          WatchlistStatus @default(WATCHING)
+  rating          Int? // User rating 1-5 stars
+  isFavorite      Boolean         @default(false)
+  preferredRegion String          @default("US")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  show Show @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, showId])
+  @@index([userId])
+  @@index([showId])
+  @@map("watchlists")
+}
+
+model DismissedRecommendation {
+  id        String   @id @default(cuid())
+  userId    String
+  showId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  show Show @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, showId])
+  @@index([userId])
+  @@index([showId])
+  @@map("dismissed_recommendations")
+}
+
+model Episode {
+  id              String   @id @default(cuid())
+  tvmazeEpisodeId Int?     @unique
+  showId          String
+  season          Int
+  number          Int
+  title           String
+  airdate         String?
+  airtime         String?
+  summary         String?
+  runtime         Int?
+  image           String?
+  createdAt       DateTime @default(now())
+
+  show Show @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@index([showId])
+  @@index([airdate])
+  @@map("episodes")
+}
+
+model StreamingProvider {
+  id           String   @id @default(cuid())
+  showId       String
+  providerName String
+  logoUrl      String?
+  deepLink     String?
+  type         String   @default("sub")
+  region       String   @default("US")
+  createdAt    DateTime @default(now())
+
+  show Show @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@unique([showId, providerName, region])
+  @@index([showId])
+  @@map("streaming_providers")
+}

@@ -1,0 +1,31 @@
+{
+  "name": "tv-tracker-monorepo",
+  "version": "1.0.0",
+  "description": "Cross-Platform TV Show & Streaming Tracker Monorepo with Expo, Node.js Express, Prisma, and TVmaze",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "mobile"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=backend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:mobile": "npm run start --workspace=mobile",
+    "build:backend": "npm run build --workspace=backend",
+    "test:backend": "npm test --workspace=backend",
+    "prisma:generate": "npm run prisma:generate --workspace=backend",
+    "prisma:migrate": "npm run prisma:migrate --workspace=backend"
+  },
+  "keywords": [
+    "tv-tracker",
+    "expo",
+    "react-native",
+    "express",
+    "prisma",
+    "tvmaze",
+    "ics-calendar",
+    "push-notifications"
+  ],
+  "author": "TV Tracker Team",
+  "license": "MIT"
+}
