@@ -10,7 +10,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: tvtracker
     ports:
-      - '5432:5432'
+      # Loopback only: the backend connects over localhost, so this never
+      # needs to be reachable from the LAN.
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
