@@ -9,8 +9,11 @@ interface StreamingBadgeProps {
   interactive?: boolean;
 }
 
-const PROVIDER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+export const PROVIDER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   'apple tv+': { bg: '#000000', text: '#ffffff', border: '#3f3f46' },
+  // TMDB calls the Apple TV+ subscription plainly "Apple TV"; the iTunes
+  // storefront is a separate brand ("Apple TV Store").
+  'apple tv': { bg: '#000000', text: '#ffffff', border: '#3f3f46' },
   'netflix': { bg: '#e50914', text: '#ffffff', border: '#e50914' },
   'max': { bg: '#002be7', text: '#ffffff', border: '#002be7' },
   'hbo': { bg: '#002be7', text: '#ffffff', border: '#002be7' },

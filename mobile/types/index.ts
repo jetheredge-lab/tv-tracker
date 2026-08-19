@@ -10,6 +10,36 @@ export type WatchlistStatus =
 
 export type MediaType = 'TV' | 'MOVIE';
 
+/** flatrate = included with a subscription; ads/free need no subscription. */
+export type OfferType = 'flatrate' | 'free' | 'ads' | 'rent' | 'buy';
+
+export interface TitleAvailability {
+  providerId: number;
+  providerName: string;
+  offerType: OfferType;
+  region: string;
+  deepLink?: string | null;
+  /**
+   * null means the viewer has never told us their services - which renders as a
+   * plain badge, NOT a greyed one. Silence is not evidence of subscribing to
+   * nothing.
+   */
+  owned: boolean | null;
+}
+
+export interface ProviderOption {
+  name: string;
+  providerIds: number[];
+  logoUrl?: string | null;
+  priority: number;
+}
+
+export interface UserSubscriptions {
+  configured: boolean;
+  region: string;
+  subscriptions: Array<{ providerId: number; providerName: string }>;
+}
+
 export interface StreamingProvider {
   id?: string;
   providerName: string;
@@ -54,6 +84,7 @@ export interface Show {
   rating?: number | null;
   /** Set on recommendation cards: why this show was picked. */
   reason?: string;
+  availability?: TitleAvailability[] | null;
   streamingProviders?: StreamingProvider[];
   episodes?: Episode[];
   totalEpisodes?: number;

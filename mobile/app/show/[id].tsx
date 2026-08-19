@@ -26,6 +26,7 @@ import { apiService } from '../../services/api';
 import { useUserStore } from '../../store/useUserStore';
 import { titleKey, useWatchlistStore } from '../../store/useWatchlistStore';
 import StreamingBadge from '../../components/StreamingBadge';
+import AvailabilityRow from '../../components/AvailabilityRow';
 import EpisodeCard from '../../components/EpisodeCard';
 import StatusPickerModal from '../../components/StatusPickerModal';
 import StarRating from '../../components/StarRating';
@@ -337,23 +338,27 @@ export default function ShowDetailsScreen() {
             </View>
           )}
 
-          {/* Where to Watch / Streaming Availability */}
-          <View className="mt-6">
-            <Text className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2.5">
-              Where to Watch
-            </Text>
-            {show.streamingProviders && show.streamingProviders.length > 0 ? (
+          {/* Real per-region availability, with the network -> provider heuristic
+              kept only as a fallback for titles TMDB has no data for. */}
+          <AvailabilityRow
+            availability={show.availability}
+            onOpenSettings={() => router.push('/subscriptions')}
+          />
+
+          {(!show.availability || show.availability.length === 0) &&
+          show.streamingProviders &&
+          show.streamingProviders.length > 0 ? (
+            <View className="mt-6">
+              <Text className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-2.5">
+                Where to Watch
+              </Text>
               <View className="flex-row flex-wrap gap-2">
                 {show.streamingProviders.map((prov: StreamingProvider, idx: number) => (
                   <StreamingBadge key={idx} provider={prov} size="md" interactive={true} />
                 ))}
               </View>
-            ) : (
-              <Text className="text-xs text-zinc-500 italic">
-                Streaming information currently unavailable.
-              </Text>
-            )}
-          </View>
+            </View>
+          ) : null}
 
           {/* Synopsis */}
           {show.summary ? (

@@ -4,6 +4,8 @@ import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   MediaType,
+  ProviderOption,
+  UserSubscriptions,
   CalendarEpisode,
   RecommendationSection,
   Show,
@@ -218,6 +220,33 @@ export const apiService = {
       params: { month, year },
     });
     return response.data.episodes;
+  },
+
+  // Streaming services
+  getProviders: async (region = 'US'): Promise<ProviderOption[]> => {
+    const response = await api.get<{ providers: ProviderOption[] }>('/api/providers', {
+      params: { region },
+    });
+    return response.data.providers;
+  },
+
+  getSubscriptions: async (userId: string, region = 'US'): Promise<UserSubscriptions> => {
+    const response = await api.get<UserSubscriptions>(`/api/users/${userId}/subscriptions`, {
+      params: { region },
+    });
+    return response.data;
+  },
+
+  saveSubscriptions: async (
+    userId: string,
+    subscriptions: Array<{ providerId: number; providerName: string }>,
+    region = 'US'
+  ): Promise<UserSubscriptions> => {
+    const response = await api.put<UserSubscriptions>(
+      `/api/users/${userId}/subscriptions`,
+      { subscriptions, region }
+    );
+    return response.data;
   },
 
   // Users & Preferences

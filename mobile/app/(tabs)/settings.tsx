@@ -24,6 +24,7 @@ import {
   Server,
   ShieldCheck,
   Trash2,
+  Tv,
 } from 'lucide-react-native';
 import { useUserStore } from '../../store/useUserStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -378,6 +379,28 @@ export default function SettingsScreen() {
               {API_BASE_URL.includes('https') ? 'Cloudflare Tunnel (Secure HTTPS)' : 'Local Development'}
             </Text>
           </Text>
+        </View>
+
+        {/* Streaming services. Optional by design: skipping it changes nothing
+            about what the app shows, only how availability is drawn. */}
+        <View className="mt-8">
+          <Text className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+            My Services
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.push('/subscriptions')}
+            activeOpacity={0.8}
+            className="bg-card border border-border/50 rounded-2xl p-4 flex-row items-center justify-between"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-sm font-bold text-zinc-100 mb-1">Streaming Services</Text>
+              <Text className="text-xs text-zinc-400">
+                Mark what you already pay for. Recommendations are never filtered by this —
+                it only marks what is included.
+              </Text>
+            </View>
+            <Tv size={18} color="#818cf8" />
+          </TouchableOpacity>
         </View>
 
         {/* Danger zone - Google Play requires an in-app account deletion

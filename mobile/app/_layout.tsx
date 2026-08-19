@@ -72,6 +72,14 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="subscriptions"
+            options={{
+              title: 'My Services',
+              headerShown: false,
+              presentation: 'modal',
+            }}
+          />
+          <Stack.Screen
             name="show/[id]"
             options={{
               title: 'Show Details',
