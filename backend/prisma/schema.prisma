@@ -10,9 +10,19 @@ datasource db {
 enum WatchlistStatus {
   WATCHING
   COMPLETED
+  /// Movies only: a film is watched or it is not. COMPLETED describes finishing
+  /// a run of episodes and reads wrong for a single sitting.
+  WATCHED
   PLAN_TO_WATCH
   DROPPED
   ENDED
+}
+
+/// Which kind of title a `Show` row holds. The model keeps its name: renaming it
+/// to Title would touch ~120 references for no functional gain.
+enum MediaType {
+  TV
+  MOVIE
 }
 
 model User {
@@ -36,30 +46,44 @@ model User {
   updatedAt          DateTime                  @updatedAt
   watchlists         Watchlist[]
   dismissedRecs      DismissedRecommendation[]
+  subscriptions      UserSubscription[]
 
   @@map("users")
 }
 
 model Show {
   id                 String                    @id @default(cuid())
-  tvmazeId           Int                       @unique
+  mediaType          MediaType                 @default(TV)
+  /// Null for movies - TVmaze indexes television only. Postgres allows many
+  /// NULLs in a unique column, so this stays the TV identity key.
+  tvmazeId           Int?                      @unique
+  /// The movie identity key, and optional enrichment for TV.
   tmdbId             Int?                      @unique
   title              String
   summary            String?
   posterUrl          String?
   backdropUrl        String?
+  /// TV: Running/Ended. Movies: Released/Post Production.
   status             String                    @default("Running")
+  /// Canonical vocabulary, normalised at ingest so TV and film taste share one
+  /// namespace (see services/genres.ts).
   genres             String[]                  @default([])
   network            String?
   premiered          DateTime?
+  /// Movies: theatrical release. TV keeps using `premiered`.
+  releaseDate        DateTime?
+  /// Movies: feature length. TV runtime is per-episode.
+  runtime            Int?
   rating             Float?
   updatedAt          DateTime                  @updatedAt
   episodes           Episode[]
   streamingProviders StreamingProvider[]
+  availability       TitleAvailability[]
   watchlists         Watchlist[]
   dismissedRecs      DismissedRecommendation[]
 
   @@index([title])
+  @@index([mediaType])
   @@map("shows")
 }
 
@@ -165,4 +189,75 @@ model CatalogShow {
   @@index([premiered])
   @@index([language])
   @@map("catalog_shows")
+}
+
+/// Local mirror of TMDB's movie corpus - the film half of the scoring pool.
+/// TVmaze has no movies, so unlike catalog_shows this cannot be built without
+/// an API key. `popularity` is the movie analogue of TVmaze's `weight`.
+model CatalogMovie {
+  tmdbId        Int       @id
+  title         String
+  originalTitle String?
+  language      String?
+  /// Canonical vocabulary - see services/genres.ts. TMDB says "Science Fiction",
+  /// TVmaze says "Science-Fiction"; unnormalised, film and TV taste never meet.
+  genres        String[]  @default([])
+  releaseDate   DateTime?
+  releaseYear   Int?
+  rating        Float?
+  voteCount     Int       @default(0)
+  popularity    Float     @default(0)
+  runtime       Int?
+  summary       String?
+  posterUrl     String?
+  backdropUrl   String?
+  adult         Boolean   @default(false)
+  updatedAt     DateTime  @updatedAt
+
+  @@index([popularity])
+  @@index([rating])
+  @@index([releaseYear])
+  @@index([language])
+  @@map("catalog_movies")
+}
+
+/// Services the user says they pay for. Deliberately a table and not a column:
+/// NO ROWS means "never told us", which must render differently from "subscribes
+/// to nothing". Subscriptions bias ranking and badge colour - they never filter.
+model UserSubscription {
+  id           String   @id @default(cuid())
+  userId       String
+  /// TMDB (JustWatch) provider id.
+  providerId   Int
+  providerName String
+  region       String   @default("US")
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, providerId, region])
+  @@index([userId])
+  @@map("user_subscriptions")
+}
+
+/// Where a title can actually be watched, per region, from TMDB's JustWatch
+/// feed. Films move between services constantly, so rows carry `refreshedAt`
+/// and are re-pulled far more often than the catalog itself.
+/// Attribution to JustWatch is required wherever this is displayed.
+model TitleAvailability {
+  id           String   @id @default(cuid())
+  showId       String
+  providerId   Int
+  providerName String
+  /// flatrate | rent | buy | ads | free
+  offerType    String
+  region       String   @default("US")
+  deepLink     String?
+  refreshedAt  DateTime @default(now())
+
+  show Show @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@unique([showId, providerId, offerType, region])
+  @@index([showId, region])
+  @@map("title_availability")
 }

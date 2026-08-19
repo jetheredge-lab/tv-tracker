@@ -108,6 +108,10 @@ export class SchedulerService {
 
     console.log(`[SchedulerService] Refreshing ${distinctShowsMap.size} distinct active shows from TVmaze...`);
     for (const [showId, show] of distinctShowsMap.entries()) {
+      // Movies have no TVmaze id and no episodes - nothing for this nightly
+      // episode refresh to do with them.
+      if (show.tvmazeId === null) continue;
+
       try {
         await tvmazeService.syncShowWithDb(show.tvmazeId, 'US');
       } catch (err) {

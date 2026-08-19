@@ -1,6 +1,6 @@
 # Movies in TV Tracker — scope
 
-**Status:** proposed, not started. Written 2026-08-19.
+**Status:** approved, phase 1 in progress. Written 2026-08-19.
 **Goal:** movies as first-class citizens beside shows in a single unified watchlist, with
 streaming availability that *informs* recommendations without ever gating them.
 
@@ -170,14 +170,29 @@ watchlist; after 2 the badges tell you where to watch it; after 3 the app recomm
 
 ---
 
-## Open decisions
+## Settled decisions
 
-1. **Watchlist status for films.** Reuse the enum (a movie sits in `WATCHING` for one evening),
-   or add `WATCHED`? Reuse is cheaper and slightly wrong; a new value is cleaner and touches the
-   filter UI.
-2. **Pool size.** The TV pool is ~30k of ~89k. Movies have far more long tail — how deep is worth
-   scoring?
-3. **Region.** `preferredRegion` exists and availability is per-region. Subscriptions should
-   probably be region-scoped too, since the same service carries different catalogues.
-4. **Attribution.** TMDB's watch-provider data is JustWatch-sourced and requires visible
-   attribution wherever it appears. Personal use is fine; the credit is not optional.
+1. **Films get their own `WATCHED` status** (operator call). `COMPLETED` describes finishing a
+   run of episodes and reads wrong for a single sitting. Added to `WatchlistStatus`; the filter
+   UI has to grow it.
+2. **`Show` keeps its name.** Confirmed — renaming to `Title` would touch ~120 references for no
+   functional gain.
+3. **The genre vocabularies must match** (operator call — not optional). Implemented in
+   `services/genres.ts`: TVmaze's vocabulary is canonical because ~89k `catalog_shows` rows
+   already carry it, so mapping TMDB onto it rewrites nothing. Verified against the live TMDB
+   genre list — all 19 movie genres accounted for, `Science Fiction` → `Science-Fiction`,
+   `TV Movie` dropped as a distribution channel rather than a taste. `Animation` is deliberately
+   NOT folded into `Anime`.
+4. **Pool depth** (default taken): mirror the TV thresholds in spirit — a popularity/vote floor
+   rather than a fixed count, tuned once the first sweep shows the distribution.
+5. **Subscriptions are region-scoped** (default taken): `UserSubscription` carries `region`,
+   because the same service ships different catalogues per country and `preferredRegion` already
+   exists. Cheap now, expensive to retrofit.
+6. **JustWatch attribution** (default taken): required wherever provider data renders. Not
+   optional under TMDB's terms.
+
+## Still open
+
+1. **Exact pool thresholds**, once the first catalog sweep reveals the popularity distribution.
+2. **Whether `WATCHED` should also apply to TV** (a limited series is arguably watched, not
+   completed). Left alone for now — no migration of existing rows.

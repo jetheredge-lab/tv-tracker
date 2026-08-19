@@ -21,7 +21,8 @@ export interface TasteProfile {
 
 export interface SeedShow {
   showId: string;
-  tvmazeId: number;
+  /** Null for movies - TVmaze indexes television only. */
+  tvmazeId: number | null;
   title: string;
   genres: string[];
   provider: string | null;
@@ -36,7 +37,8 @@ export interface WatchlistLike {
   isFavorite: boolean;
   show: {
     id: string;
-    tvmazeId: number;
+    /** Null for movies. */
+    tvmazeId: number | null;
     title: string;
     genres: string[];
     network: string | null;
@@ -92,7 +94,10 @@ export function buildTasteProfile(
       genreRaw.set(g, (genreRaw.get(g) || 0) + perGenre);
     }
 
-    const catalogEntry = catalogById(show.tvmazeId);
+    // A movie has no TVmaze catalog row. Genre, provider and era taste still
+    // accrue from it below - which is the whole point of one shared watchlist -
+    // but the TV-only signals (language, show type) simply do not apply.
+    const catalogEntry = show.tvmazeId !== null ? catalogById(show.tvmazeId) : undefined;
     const provider = show.network || catalogEntry?.provider || null;
     if (provider) providerRaw.set(provider, (providerRaw.get(provider) || 0) + weight);
 

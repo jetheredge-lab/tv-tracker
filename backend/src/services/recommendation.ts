@@ -64,9 +64,12 @@ export class RecommendationEngineService {
       prisma.dismissedRecommendation.findMany({ where: { userId }, include: { show: true } }),
     ]);
 
+    // Keyed on tvmazeId because the exclusion is applied against the TV
+    // candidate pool. Movies carry no tvmazeId and can never collide with it,
+    // so they are skipped here rather than forced into the set.
     const excludedIds = new Set<number>();
-    for (const w of watchlists) excludedIds.add(w.show.tvmazeId);
-    for (const d of dismissed) excludedIds.add(d.show.tvmazeId);
+    for (const w of watchlists) if (w.show.tvmazeId !== null) excludedIds.add(w.show.tvmazeId);
+    for (const d of dismissed) if (d.show.tvmazeId !== null) excludedIds.add(d.show.tvmazeId);
 
     const taste = buildTasteProfile(
       watchlists.map(w => ({
@@ -221,7 +224,7 @@ export class RecommendationEngineService {
     const strong = seeds.filter(s => s.weight >= 2.5);
     const eligible = strong.length >= 3 ? strong : seeds;
     return [...eligible]
-      .map(s => ({ s, k: seededUnit(userId, dayKey, s.tvmazeId) + Math.min(s.weight, 4) / 8 }))
+      .map(s => ({ s, k: seededUnit(userId, dayKey, s.tvmazeId ?? s.showId) + Math.min(s.weight, 4) / 8 }))
       .sort((a, b) => b.k - a.k)
       .slice(0, 3)
       .map(x => x.s);
@@ -232,7 +235,7 @@ export class RecommendationEngineService {
     eligible: CandidateShow[],
     baseScores: Map<number, number>,
     used: Set<number>,
-    watchlists: Array<{ show: { id: string; tvmazeId: number; title: string } }>
+    watchlists: Array<{ show: { id: string; tvmazeId: number | null; title: string } }>
   ): Promise<SectionSpec | null> {
     // TMDB, when a key is configured, contributes an editorial "people who
     // watched this also watched" signal that pure genre overlap cannot.

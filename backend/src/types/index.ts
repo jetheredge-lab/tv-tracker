@@ -148,12 +148,13 @@ export interface RecommendationSection {
   kind?: string;
   sourceShow?: {
     id: string;
-    tvmazeId: number;
+    /** Null for movies - TVmaze indexes television only. */
+    tvmazeId: number | null;
     title: string;
   };
   shows: Array<{
     id?: string;
-    tvmazeId: number;
+    tvmazeId: number | null;
     tmdbId?: number | null;
     title: string;
     summary: string | null;
