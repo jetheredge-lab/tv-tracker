@@ -12,7 +12,8 @@
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
     "catalog:sync": "tsx src/scripts/syncCatalog.ts",
-    "test": "jest --runInBand --forceExit"
+    "test": "jest --runInBand --forceExit",
+    "catalog:sync-movies": "tsx src/scripts/syncMovieCatalog.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

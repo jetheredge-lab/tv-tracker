@@ -58,6 +58,12 @@ model Show {
   /// NULLs in a unique column, so this stays the TV identity key.
   tvmazeId           Int?                      @unique
   /// The movie identity key, and optional enrichment for TV.
+  ///
+  /// HAZARD: TMDB namespaces movie and TV ids separately, so id 550 is both a
+  /// film and a series. A bare unique therefore cannot hold both. It is safe
+  /// today only because nothing writes tmdbId for TV rows (verified: 0 rows) -
+  /// movies have the column to themselves. The moment TV enrichment starts
+  /// populating it, this must become @@unique([mediaType, tmdbId]).
   tmdbId             Int?                      @unique
   title              String
   summary            String?

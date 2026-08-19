@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import prisma from '../services/prisma.js';
 import tvmazeService from '../services/tvmaze.js';
+import movieService from '../services/movies.js';
 import { WatchlistStatus } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { invalidateUserRecommendations } from '../services/recommendation.js';
@@ -62,8 +63,11 @@ export const getUserWatchlist = async (req: AuthenticatedRequest, res: Response)
         updatedAt: item.updatedAt,
         show: {
           id: show.id,
+          mediaType: show.mediaType,
           tvmazeId: show.tvmazeId,
           tmdbId: show.tmdbId,
+          releaseDate: show.releaseDate,
+          runtime: show.runtime,
           title: show.title,
           summary: show.summary,
           posterUrl: show.posterUrl,
@@ -111,14 +115,17 @@ export const addToWatchlist = async (req: AuthenticatedRequest, res: Response): 
     const userId = req.user?.userId || req.body.userId;
     const {
       tvmazeId,
+      tmdbId,
       status = 'WATCHING',
       rating = null,
       isFavorite = false,
       preferredRegion = 'US',
     } = req.body;
 
-    if (!userId || !tvmazeId) {
-      res.status(400).json({ error: 'userId and tvmazeId are required' });
+    // One watchlist holds both media. A tvmazeId means a series, a tmdbId means
+    // a film; exactly one is required.
+    if (!userId || (!tvmazeId && !tmdbId)) {
+      res.status(400).json({ error: 'userId and either tvmazeId or tmdbId are required' });
       return;
     }
 
@@ -132,10 +139,15 @@ export const addToWatchlist = async (req: AuthenticatedRequest, res: Response): 
       },
     });
 
-    // 2. Sync show with DB from TVmaze
-    const show = await tvmazeService.syncShowWithDb(Number(tvmazeId), preferredRegion);
+    // 2. Resolve the title into a Show row, from whichever source owns it.
+    const show = tvmazeId
+      ? await tvmazeService.syncShowWithDb(Number(tvmazeId), preferredRegion)
+      : await movieService.syncMovieWithDb(Number(tmdbId), preferredRegion);
+
     if (!show) {
-      res.status(404).json({ error: 'Show not found on TVmaze' });
+      res.status(404).json({
+        error: tvmazeId ? 'Show not found on TVmaze' : 'Movie not found on TMDB',
+      });
       return;
     }
 
