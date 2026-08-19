@@ -102,7 +102,11 @@ const NETWORK_TO_PROVIDER: Record<string, { providerName: string; logoUrl: strin
 };
 
 export class WatchmodeService {
-  private apiKey: string | null = process.env.WATCHMODE_API_KEY || null;
+  // Read at call time: this module is imported before index.ts runs
+  // dotenv.config(), so a field initializer captures an empty env.
+  private get apiKey(): string | null {
+    return process.env.WATCHMODE_API_KEY?.trim() || null;
+  }
 
   /**
    * Resolve streaming providers for a given show

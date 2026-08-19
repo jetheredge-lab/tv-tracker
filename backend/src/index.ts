@@ -1,3 +1,6 @@
+// Must load before any service module is imported - several read their
+// credentials from process.env, and CommonJS runs imports first.
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';

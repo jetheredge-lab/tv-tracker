@@ -18,25 +18,31 @@ interface CacheEntry<T> {
  * here any more - those were what made every user see the same five shows.
  */
 export class TmdbService {
-  // v3 query-param key and v4 bearer token are both accepted; either works.
-  private apiKey = process.env.TMDB_API_KEY?.trim() || null;
-  private accessToken = process.env.TMDB_ACCESS_TOKEN?.trim() || null;
   private similarCache = new Map<string, CacheEntry<string[]>>();
   private trendingCache: CacheEntry<string[]> | null = null;
-  private client: AxiosInstance;
+  private client: AxiosInstance = axios.create({ baseURL: TMDB_BASE_URL, timeout: 6000 });
 
-  constructor() {
-    this.client = axios.create({
-      baseURL: TMDB_BASE_URL,
-      timeout: 6000,
-      headers: this.accessToken
-        ? { Authorization: `Bearer ${this.accessToken}`, Accept: 'application/json' }
-        : { Accept: 'application/json' },
-    });
+  // Read at call time, never at construction: this module is imported before
+  // index.ts runs dotenv.config(), so a field initializer would capture the
+  // env as empty and silently disable TMDB forever.
+  private get apiKey(): string | null {
+    return process.env.TMDB_API_KEY?.trim() || null;
+  }
+
+  // v3 query-param key and v4 bearer token are both accepted; either works.
+  private get accessToken(): string | null {
+    return process.env.TMDB_ACCESS_TOKEN?.trim() || null;
   }
 
   get isConfigured(): boolean {
     return Boolean(this.apiKey || this.accessToken);
+  }
+
+  private get headers() {
+    const token = this.accessToken;
+    return token
+      ? { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+      : { Accept: 'application/json' };
   }
 
   private params(extra: Record<string, unknown> = {}) {
@@ -49,6 +55,7 @@ export class TmdbService {
     try {
       const res = await this.client.get<TMDBResponse<TMDBShow>>('/search/tv', {
         params: this.params({ query: title, include_adult: false }),
+        headers: this.headers,
       });
       return res.data.results?.[0] || null;
     } catch (err) {
@@ -59,7 +66,10 @@ export class TmdbService {
 
   private async titlesFrom(path: string): Promise<string[]> {
     try {
-      const res = await this.client.get<TMDBResponse<TMDBShow>>(path, { params: this.params() });
+      const res = await this.client.get<TMDBResponse<TMDBShow>>(path, {
+        params: this.params(),
+        headers: this.headers,
+      });
       return (res.data.results || []).map(s => s.name).filter(Boolean);
     } catch (err) {
       console.warn(`[TmdbService] ${path} error:`, (err as Error).message);
@@ -124,6 +134,7 @@ export class TmdbService {
           'vote_count.gte': 200,
           page,
         }),
+        headers: this.headers,
       });
       return (res.data.results || []).map(s => s.name);
     } catch (err) {
