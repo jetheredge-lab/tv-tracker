@@ -95,8 +95,10 @@ export class MovieService {
       rating: typeof detail.vote_average === 'number' ? detail.vote_average : null,
     };
 
+    // Addressed by (mediaType, tmdbId): a bare tmdbId is ambiguous because
+    // TMDB numbers films and series independently.
     const show = await prisma.show.upsert({
-      where: { tmdbId },
+      where: { mediaType_tmdbId: { mediaType: 'MOVIE', tmdbId } },
       update: fields,
       create: { tmdbId, ...fields },
     });

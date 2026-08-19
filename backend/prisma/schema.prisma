@@ -59,12 +59,11 @@ model Show {
   tvmazeId           Int?                      @unique
   /// The movie identity key, and optional enrichment for TV.
   ///
-  /// HAZARD: TMDB namespaces movie and TV ids separately, so id 550 is both a
-  /// film and a series. A bare unique therefore cannot hold both. It is safe
-  /// today only because nothing writes tmdbId for TV rows (verified: 0 rows) -
-  /// movies have the column to themselves. The moment TV enrichment starts
-  /// populating it, this must become @@unique([mediaType, tmdbId]).
-  tmdbId             Int?                      @unique
+  /// NOT unique on its own: TMDB namespaces movie and TV ids separately, so id
+  /// 550 is both a film and a series. Uniqueness is per media type - see the
+  /// @@unique below. Rows with a null tmdbId (every TV row today) do not
+  /// collide, because Postgres treats NULLs as distinct in a unique index.
+  tmdbId             Int?
   title              String
   summary            String?
   posterUrl          String?
@@ -88,6 +87,7 @@ model Show {
   watchlists         Watchlist[]
   dismissedRecs      DismissedRecommendation[]
 
+  @@unique([mediaType, tmdbId])
   @@index([title])
   @@index([mediaType])
   @@map("shows")
