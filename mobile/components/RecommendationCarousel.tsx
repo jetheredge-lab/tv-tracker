@@ -111,6 +111,12 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
                     {premierYear ? `${premierYear} ` : ''}
                     {show.network ? `• ${show.network}` : ''}
                   </Text>
+                  {/* Why the recommender surfaced this card. */}
+                  {show.reason ? (
+                    <Text className="text-[10px] text-primary-400 mt-1" numberOfLines={1}>
+                      {show.reason}
+                    </Text>
+                  ) : null}
                 </TouchableOpacity>
 
                 {/* Streaming badge if available */}

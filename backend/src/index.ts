@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import apiRouter from './routes/index.js';
 import { apiLimiter, authLimiter } from './middleware/rateLimit.js';
 import schedulerService from './services/scheduler.js';
@@ -34,8 +36,28 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Root Welcome Route
-app.get('/', (_req: Request, res: Response) => {
+// Exported Expo web build (mobile/dist), served at the site root so the app is
+// usable from any browser without Expo Go. Absent until `expo export` has run,
+// in which case the API-only welcome page below takes over at '/'.
+const WEB_DIR = process.env.WEB_DIR || path.resolve(__dirname, '../../mobile/dist');
+const WEB_INDEX = path.join(WEB_DIR, 'index.html');
+const hasWebBuild = fs.existsSync(WEB_INDEX);
+
+if (hasWebBuild) {
+  app.use(
+    express.static(WEB_DIR, {
+      index: false,
+      // Hashed asset filenames can cache hard; index.html must not.
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      },
+      maxAge: '1h',
+    })
+  );
+}
+
+// API Welcome Route
+app.get(['/api', ...(hasWebBuild ? [] : ['/'])], (_req: Request, res: Response) => {
   res.json({
     name: 'TV Tracker & Streaming Notification API',
     version: '1.0.0',
@@ -57,6 +79,15 @@ app.use('/api/auth', authLimiter);
 
 // Register API Routes
 app.use('/api', apiRouter);
+
+// SPA fallback: expo-router owns client-side routing, so any non-API GET that
+// reached this far is a deep link into the web app, not a missing endpoint.
+if (hasWebBuild) {
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(WEB_INDEX);
+  });
+}
 
 // 404 Handler
 app.use((req: Request, res: Response) => {

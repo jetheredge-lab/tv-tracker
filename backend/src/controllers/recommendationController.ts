@@ -13,7 +13,10 @@ export const getPersonalizedRecommendations = async (
       return;
     }
 
-    const sections = await recommendationEngine.getPersonalizedRecommendations(userId);
+    // Pull-to-refresh should be able to bypass the 3h row cache.
+    const refresh = req.query.refresh === '1' || req.query.refresh === 'true';
+
+    const sections = await recommendationEngine.getPersonalizedRecommendations(userId, { refresh });
     res.json({ sections });
   } catch (error) {
     console.error('[recommendationController] getPersonalizedRecommendations error:', error);

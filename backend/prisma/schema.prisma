@@ -135,3 +135,34 @@ model StreamingProvider {
   @@index([showId])
   @@map("streaming_providers")
 }
+
+/// Local mirror of the full TVmaze show index (~90k rows, refreshed weekly).
+/// This is the corpus the recommender scores against - without it the only
+/// candidates available were whatever was hardcoded in the service layer.
+model CatalogShow {
+  tvmazeId    Int       @id
+  title       String
+  language    String?
+  type        String?
+  status      String?
+  genres      String[]  @default([])
+  network     String?
+  webChannel  String?
+  country     String?
+  premiered   DateTime?
+  ended       DateTime?
+  rating      Float?
+  /// TVmaze's own 0-100 popularity score - the keyless "trending" signal.
+  weight      Int       @default(0)
+  runtime     Int?
+  summary     String?
+  posterUrl   String?
+  backdropUrl String?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([weight])
+  @@index([rating])
+  @@index([premiered])
+  @@index([language])
+  @@map("catalog_shows")
+}

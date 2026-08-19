@@ -3,10 +3,12 @@ import prisma from './prisma.js';
 import tvmazeService from './tvmaze.js';
 import watchmodeService from './watchmode.js';
 import notificationService from './notification.js';
+import catalogService from './catalog.js';
 import emailService, { EmailEpisodeItem } from './email.js';
 
 export class SchedulerService {
   private cronJob: cron.ScheduledTask | null = null;
+  private catalogJob: cron.ScheduledTask | null = null;
 
   /**
    * Initialize and start the daily scheduler (Runs at 00:05 UTC daily)
@@ -25,6 +27,33 @@ export class SchedulerService {
     }, {
       timezone: 'UTC',
     });
+
+    // The recommender scores against a local mirror of the TVmaze show index.
+    // Refresh it weekly (Sunday 03:20 UTC) so new premieres can be recommended.
+    this.catalogJob = cron.schedule('20 3 * * 0', async () => {
+      try {
+        await catalogService.syncCatalog();
+      } catch (error) {
+        console.error('[SchedulerService] Catalog sync failed:', error);
+      }
+    }, {
+      timezone: 'UTC',
+    });
+
+    // Cold start: an empty catalog means no recommendations at all, so build it
+    // in the background rather than waiting for the weekly job.
+    void this.ensureCatalogPopulated();
+  }
+
+  private async ensureCatalogPopulated() {
+    try {
+      const count = await catalogService.countShows();
+      if (count > 0) return;
+      console.log('[SchedulerService] Catalog empty - running initial TVmaze index sync...');
+      await catalogService.syncCatalog();
+    } catch (error) {
+      console.error('[SchedulerService] Initial catalog sync failed:', error);
+    }
   }
 
   stop() {
@@ -32,6 +61,10 @@ export class SchedulerService {
       this.cronJob.stop();
       this.cronJob = null;
       console.log('[SchedulerService] Cron job stopped.');
+    }
+    if (this.catalogJob) {
+      this.catalogJob.stop();
+      this.catalogJob = null;
     }
   }
 

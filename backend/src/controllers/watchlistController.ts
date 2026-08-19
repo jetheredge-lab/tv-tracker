@@ -3,6 +3,7 @@ import prisma from '../services/prisma.js';
 import tvmazeService from '../services/tvmaze.js';
 import { WatchlistStatus } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { invalidateUserRecommendations } from '../services/recommendation.js';
 
 export const getUserWatchlist = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -171,6 +172,9 @@ export const addToWatchlist = async (req: AuthenticatedRequest, res: Response): 
       },
     });
 
+    // The new show changes this user's taste profile - drop their cached rows.
+    invalidateUserRecommendations(userId);
+
     res.status(201).json({ item: watchlistItem });
   } catch (error) {
     console.error('[watchlistController] addToWatchlist error:', error);
@@ -219,6 +223,8 @@ export const updateWatchlist = async (req: AuthenticatedRequest, res: Response):
       },
     });
 
+    if (userId) invalidateUserRecommendations(userId);
+
     res.json({ item: updated });
   } catch (error) {
     console.error('[watchlistController] updateWatchlist error:', error);
@@ -242,6 +248,8 @@ export const removeFromWatchlist = async (req: AuthenticatedRequest, res: Respon
     await prisma.watchlist.delete({
       where: { id },
     });
+
+    if (userId) invalidateUserRecommendations(userId);
 
     res.json({ success: true, message: 'Removed from watchlist' });
   } catch (error) {

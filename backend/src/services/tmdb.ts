@@ -1,143 +1,135 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { TMDBResponse, TMDBShow } from '../types/index.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
-// Curated high-fidelity similarity graph for intelligent heuristic recommendations
-const SHOW_SIMILARITY_GRAPH: Record<string, string[]> = {
-  'severance': ['Silo', 'Dark', 'Black Mirror', 'Mr. Robot', 'Devs', 'Maniac', 'Counterpart'],
-  'the bear': ['Succession', 'Beef', 'Boiling Point', 'Industry', 'Fleabag', 'Atlanta', 'Ramy'],
-  'house of the dragon': ['Game of Thrones', 'The Lord of the Rings: The Rings of Power', 'The Witcher', 'Succession', 'The Last of Us'],
-  'the last of us': ['Fallout', 'Station Eleven', 'The Walking Dead', 'Sweet Tooth', 'Silo', 'Chernobyl'],
-  'fallout': ['The Last of Us', 'Silo', 'Twisted Metal', 'The Boys', 'Westworld', 'Severance'],
-  'stranger things': ['Dark', 'Locke & Key', 'Wednesday', 'The Umbrella Academy', 'Paper Girls'],
-  'the boys': ['Invincible', 'Peacemaker', 'Gen V', 'Watchmen', 'Fallout', 'Preacher'],
-  'shogun': ['Blue Eye Samurai', 'Marco Polo', 'Tokyo Vice', 'Vikings', 'Kingdom', 'The Last Kingdom'],
-  'ted lasso': ['Shrinking', 'Schitt\'s Creek', 'Parks and Recreation', 'The Good Place', 'Trying', 'Hacks'],
-  'succession': ['The Bear', 'Industry', 'Billions', 'Mad Men', 'House of the Dragon', 'White Lotus'],
-  'silo': ['Severance', 'Fallout', 'The Last of Us', 'Foundation', 'Snowpiercer', 'Dark'],
-  'yellowstone': ['1883', '1923', 'Mayor of Kingstown', 'Tulsa King', 'Justified', 'Longmire'],
-  'poker face': ['Columbo', 'Only Murders in the Building', 'Knives Out', 'Monk', 'Elsbeth', 'The Flight Attendant'],
-};
+const SIMILAR_TTL_MS = 24 * 60 * 60 * 1000;
+const TRENDING_TTL_MS = 6 * 60 * 60 * 1000;
 
+interface CacheEntry<T> {
+  expires: number;
+  value: T;
+}
+
+/**
+ * TMDB supplies the editorial "viewers also watched" signal. It is optional:
+ * with no credentials the recommender falls back to content-based scoring over
+ * the local TVmaze catalog, which is why there are no hardcoded title lists
+ * here any more - those were what made every user see the same five shows.
+ */
 export class TmdbService {
-  private apiKey = process.env.TMDB_API_KEY || null;
+  // v3 query-param key and v4 bearer token are both accepted; either works.
+  private apiKey = process.env.TMDB_API_KEY?.trim() || null;
+  private accessToken = process.env.TMDB_ACCESS_TOKEN?.trim() || null;
+  private similarCache = new Map<string, CacheEntry<string[]>>();
+  private trendingCache: CacheEntry<string[]> | null = null;
+  private client: AxiosInstance;
 
-  /**
-   * Search for TV show on TMDB by title
-   */
+  constructor() {
+    this.client = axios.create({
+      baseURL: TMDB_BASE_URL,
+      timeout: 6000,
+      headers: this.accessToken
+        ? { Authorization: `Bearer ${this.accessToken}`, Accept: 'application/json' }
+        : { Accept: 'application/json' },
+    });
+  }
+
+  get isConfigured(): boolean {
+    return Boolean(this.apiKey || this.accessToken);
+  }
+
+  private params(extra: Record<string, unknown> = {}) {
+    // The bearer token authenticates via header; the v3 key rides on the query.
+    return this.accessToken ? extra : { api_key: this.apiKey, ...extra };
+  }
+
   async searchShow(title: string): Promise<TMDBShow | null> {
-    if (!this.apiKey) return null;
+    if (!this.isConfigured) return null;
     try {
-      const res = await axios.get<TMDBResponse<TMDBShow>>(`${TMDB_BASE_URL}/search/tv`, {
-        params: {
-          api_key: this.apiKey,
-          query: title,
-        },
-        timeout: 5000,
+      const res = await this.client.get<TMDBResponse<TMDBShow>>('/search/tv', {
+        params: this.params({ query: title, include_adult: false }),
       });
-
-      if (res.data.results && res.data.results.length > 0) {
-        return res.data.results[0];
-      }
-      return null;
+      return res.data.results?.[0] || null;
     } catch (err) {
-      console.warn(`[TmdbService] searchShow error for "${title}":`, err);
+      console.warn(`[TmdbService] searchShow error for "${title}":`, (err as Error).message);
       return null;
     }
   }
 
-  /**
-   * Get TMDB recommendations for a show
-   */
-  async getRecommendations(tmdbId: number): Promise<string[]> {
-    if (!this.apiKey) return [];
+  private async titlesFrom(path: string): Promise<string[]> {
     try {
-      const res = await axios.get<TMDBResponse<TMDBShow>>(
-        `${TMDB_BASE_URL}/tv/${tmdbId}/recommendations`,
-        {
-          params: { api_key: this.apiKey },
-          timeout: 5000,
-        }
-      );
-      return (res.data.results || []).map(s => s.name);
+      const res = await this.client.get<TMDBResponse<TMDBShow>>(path, { params: this.params() });
+      return (res.data.results || []).map(s => s.name).filter(Boolean);
     } catch (err) {
-      console.warn(`[TmdbService] getRecommendations error for tmdbId ${tmdbId}:`, err);
+      console.warn(`[TmdbService] ${path} error:`, (err as Error).message);
       return [];
     }
   }
 
   /**
-   * Get similar shows by show title (using TMDB or similarity graph heuristic)
+   * Titles TMDB associates with a show, best first. `/recommendations` is the
+   * behavioural signal, `/similar` the metadata one - merged, dedup'd.
    */
-  async getSimilarTitlesForShow(title: string, genres: string[] = []): Promise<string[]> {
-    const normalized = title.toLowerCase().trim();
+  async getSimilarTitlesForShow(title: string, _genres: string[] = []): Promise<string[]> {
+    if (!this.isConfigured) return [];
 
-    // 1. Try real TMDB if key available
-    if (this.apiKey) {
-      const tmdbShow = await this.searchShow(title);
-      if (tmdbShow) {
-        const recs = await this.getRecommendations(tmdbShow.id);
-        if (recs.length > 0) return recs;
-      }
-    }
+    const key = title.toLowerCase().trim();
+    const hit = this.similarCache.get(key);
+    if (hit && hit.expires > Date.now()) return hit.value;
 
-    // 2. Check Curated Similarity Graph
-    if (SHOW_SIMILARITY_GRAPH[normalized]) {
-      return SHOW_SIMILARITY_GRAPH[normalized];
+    const show = await this.searchShow(title);
+    if (!show) {
+      this.similarCache.set(key, { expires: Date.now() + SIMILAR_TTL_MS, value: [] });
+      return [];
     }
 
-    // Fuzzy matching in graph
-    for (const [key, similarList] of Object.entries(SHOW_SIMILARITY_GRAPH)) {
-      if (normalized.includes(key) || key.includes(normalized)) {
-        return similarList;
-      }
+    const [recs, similar] = await Promise.all([
+      this.titlesFrom(`/tv/${show.id}/recommendations`),
+      this.titlesFrom(`/tv/${show.id}/similar`),
+    ]);
+
+    const merged: string[] = [];
+    const seen = new Set<string>();
+    for (const t of [...recs, ...similar]) {
+      const k = t.toLowerCase().trim();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      merged.push(t);
     }
 
-    // 3. Fallback based on genre match
-    if (genres.includes('Drama') && genres.includes('Mystery')) {
-      return ['Severance', 'Dark', 'Black Mirror', 'Mr. Robot', 'Devs'];
-    }
-    if (genres.includes('Comedy')) {
-      return ['Ted Lasso', 'Shrinking', 'The Bear', 'Hacks', 'Schitt\'s Creek'];
-    }
-    if (genres.includes('Sci-Fi') || genres.includes('Science-Fiction')) {
-      return ['Silo', 'Fallout', 'The Last of Us', 'Severance', 'Foundation'];
-    }
+    this.similarCache.set(key, { expires: Date.now() + SIMILAR_TTL_MS, value: merged });
+    return merged;
+  }
 
-    return ['Severance', 'The Bear', 'House of the Dragon', 'Fallout', 'Stranger Things'];
+  async getTrendingTitles(): Promise<string[]> {
+    if (!this.isConfigured) return [];
+    if (this.trendingCache && this.trendingCache.expires > Date.now()) return this.trendingCache.value;
+
+    const titles = await this.titlesFrom('/trending/tv/week');
+    this.trendingCache = { expires: Date.now() + TRENDING_TTL_MS, value: titles };
+    return titles;
   }
 
   /**
-   * Get weekly trending TV show titles
+   * Highly rated shows in a genre, used to widen thin rows when TMDB is on.
    */
-  async getTrendingTitles(): Promise<string[]> {
-    if (this.apiKey) {
-      try {
-        const res = await axios.get<TMDBResponse<TMDBShow>>(`${TMDB_BASE_URL}/trending/tv/week`, {
-          params: { api_key: this.apiKey },
-          timeout: 5000,
-        });
-        if (res.data.results && res.data.results.length > 0) {
-          return res.data.results.map(s => s.name);
-        }
-      } catch (err) {
-        console.warn('[TmdbService] getTrendingTitles API error, fallback to curated trending:', err);
-      }
+  async discoverByGenre(genreId: number, page = 1): Promise<string[]> {
+    if (!this.isConfigured) return [];
+    try {
+      const res = await this.client.get<TMDBResponse<TMDBShow>>('/discover/tv', {
+        params: this.params({
+          with_genres: genreId,
+          sort_by: 'vote_average.desc',
+          'vote_count.gte': 200,
+          page,
+        }),
+      });
+      return (res.data.results || []).map(s => s.name);
+    } catch (err) {
+      console.warn('[TmdbService] discoverByGenre error:', (err as Error).message);
+      return [];
     }
-
-    return [
-      'Severance',
-      'The Bear',
-      'House of the Dragon',
-      'The Last of Us',
-      'Fallout',
-      'Stranger Things',
-      'The Boys',
-      'Shogun',
-      'Ted Lasso',
-      'Silo',
-    ];
   }
 }
 

@@ -35,6 +35,8 @@ export interface Show {
   network?: string | null;
   premiered?: string | null;
   rating?: number | null;
+  /** Set on recommendation cards: why this show was picked. */
+  reason?: string;
   streamingProviders?: StreamingProvider[];
   episodes?: Episode[];
   totalEpisodes?: number;
@@ -59,6 +61,8 @@ export interface RecommendationSection {
   id: string;
   title: string;
   subtitle?: string;
+  /** Row type, e.g. because_you_watched | genre | trending | hidden_gems. */
+  kind?: string;
   sourceShow?: {
     id: string;
     tvmazeId: number;

@@ -144,6 +144,8 @@ export interface RecommendationSection {
   id: string;
   title: string;
   subtitle?: string;
+  /** Row type, e.g. because_you_watched | genre | trending | hidden_gems. */
+  kind?: string;
   sourceShow?: {
     id: string;
     tvmazeId: number;
@@ -162,6 +164,8 @@ export interface RecommendationSection {
     network: string | null;
     premiered: string | null;
     rating: number | null;
+    /** Why this show was picked, e.g. "Shares Drama + Thriller". */
+    reason?: string;
     streamingProviders?: StreamingProviderInfo[];
   }>;
 }

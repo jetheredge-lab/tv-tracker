@@ -11,6 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
+    "catalog:sync": "tsx src/scripts/syncCatalog.ts",
     "test": "jest --runInBand --forceExit"
   },
   "dependencies": {
