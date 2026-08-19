@@ -2,6 +2,7 @@ import axios from 'axios';
 import { TVmazeEpisode, TVmazeSearchResult, TVmazeShow } from '../types/index.js';
 import prisma from './prisma.js';
 import { watchmodeService } from './watchmode.js';
+import { refreshAvailability } from './availability.js';
 
 const TVMAZE_BASE_URL = 'https://api.tvmaze.com';
 
@@ -165,6 +166,18 @@ export class TVmazeService {
       await watchmodeService.syncStreamingProvidersForShow(show.id, show.title, networkName, region);
     } catch (err) {
       console.warn(`[TVmazeService] Streaming providers sync warning for "${show.title}":`, err);
+    }
+
+    // Real per-region availability, which the network heuristic above can only
+    // approximate - it can guess "HBO means Max" but never that this series
+    // left Max last month.
+    try {
+      await refreshAvailability(
+        { id: show.id, tmdbId: show.tmdbId, mediaType: 'TV', title: show.title },
+        region
+      );
+    } catch (err) {
+      console.warn(`[TVmazeService] availability refresh failed for "${show.title}":`, (err as Error).message);
     }
 
     // Return complete populated show

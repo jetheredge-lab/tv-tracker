@@ -5,6 +5,7 @@ import movieService from '../services/movies.js';
 import { WatchlistStatus } from '@prisma/client';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { invalidateUserRecommendations } from '../services/recommendation.js';
+import { getSubscribedNames, markOwnership } from '../services/availability.js';
 
 export const getUserWatchlist = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -25,6 +26,7 @@ export const getUserWatchlist = async (req: AuthenticatedRequest, res: Response)
               orderBy: [{ airdate: 'asc' }, { season: 'asc' }, { number: 'asc' }],
             },
             streamingProviders: true,
+            availability: true,
           },
         },
       },
@@ -33,6 +35,14 @@ export const getUserWatchlist = async (req: AuthenticatedRequest, res: Response)
         { createdAt: 'desc' },
       ],
     });
+
+    // Fetched once for the whole list rather than per row. A null result means
+    // the user has never saved their services, which renders as a plain badge -
+    // not as a greyed-out one.
+    const regionForBadges = (
+      watchlists[0]?.preferredRegion || 'US'
+    ).toUpperCase();
+    const subscribed = await getSubscribedNames(userId, regionForBadges);
 
     const formatted = watchlists.map(item => {
       const show = item.show;
@@ -78,6 +88,10 @@ export const getUserWatchlist = async (req: AuthenticatedRequest, res: Response)
           premiered: show.premiered,
           rating: show.rating,
           streamingProviders: show.streamingProviders,
+          availability: markOwnership(
+            (show.availability ?? []).filter(a => a.region === regionForBadges),
+            subscribed
+          ),
           totalEpisodes: allEpisodes.length,
           nextEpisode: nextEpisode
             ? {

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import authRoutes from './auth.routes.js';
 import showsRoutes from './shows.routes.js';
 import moviesRoutes from './movies.routes.js';
+import providersRoutes from './providers.routes.js';
 import watchlistRoutes from './watchlist.routes.js';
 import calendarRoutes from './calendar.routes.js';
 import userRoutes from './user.routes.js';
@@ -23,6 +24,7 @@ router.get('/health', (_req, res) => {
 router.use('/auth', authRoutes);
 router.use('/shows', showsRoutes);
 router.use('/movies', moviesRoutes);
+router.use('/providers', providersRoutes);
 router.use('/watchlist', watchlistRoutes);
 router.use('/recommendations', recommendationsRoutes);
 router.use('/calendar', calendarRoutes);

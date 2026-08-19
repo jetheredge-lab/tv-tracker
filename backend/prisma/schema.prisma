@@ -42,6 +42,13 @@ model User {
   pushAlertsEnabled  Boolean                   @default(true)
   emailAlertsEnabled Boolean                   @default(true)
   preferredRegion    String                    @default("US")
+  /// When the user last saved their streaming services.
+  ///
+  /// NULL means they have never told us, which must render differently from
+  /// "subscribes to nothing" - a timestamp with zero UserSubscription rows.
+  /// Without this the two are indistinguishable, and an unset preference would
+  /// grey out every badge in the app.
+  subscriptionsSetAt DateTime?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
   watchlists         Watchlist[]

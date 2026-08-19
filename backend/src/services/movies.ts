@@ -1,5 +1,6 @@
 import prisma from './prisma.js';
 import { normalizeTmdbMovieGenres } from './genres.js';
+import { refreshAvailability } from './availability.js';
 import { tmdbGet, tmdbImage, tmdbIsConfigured, POSTER_SIZE, BACKDROP_SIZE } from './tmdbClient.js';
 
 const SUMMARY_MAX = 2000;
@@ -69,11 +70,11 @@ export class MovieService {
    * Persist a film as a `Show` row with mediaType MOVIE - the same table shows
    * live in, which is what makes one unified watchlist possible.
    *
-   * Deliberately does NOT sync streaming providers. The network -> provider
-   * heuristic those come from keys off a broadcast network, and films have
-   * none; real per-region availability lands in title_availability (phase 2).
+   * Streaming providers are deliberately NOT synced from the network -> provider
+   * heuristic: it keys off a broadcast network and films have none. Real
+   * per-region availability is written to title_availability instead.
    */
-  async syncMovieWithDb(tmdbId: number, _region = 'US') {
+  async syncMovieWithDb(tmdbId: number, region = 'US') {
     const detail = await this.getMovieDetails(tmdbId);
     if (!detail) return null;
 
@@ -102,6 +103,17 @@ export class MovieService {
       update: fields,
       create: { tmdbId, ...fields },
     });
+
+    // Where to watch it, from the JustWatch feed. Enrichment, so a failure
+    // here must not cost the caller the title itself.
+    try {
+      await refreshAvailability(
+        { id: show.id, tmdbId: show.tmdbId, mediaType: 'MOVIE', title: show.title },
+        region
+      );
+    } catch (err) {
+      console.warn(`[MovieService] availability refresh failed for "${show.title}":`, (err as Error).message);
+    }
 
     return prisma.show.findUnique({
       where: { id: show.id },

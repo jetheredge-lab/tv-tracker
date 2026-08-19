@@ -3,6 +3,8 @@ import movieService, { TmdbMovieSummary } from '../services/movies.js';
 import movieCatalogService from '../services/movieCatalog.js';
 import { normalizeTmdbMovieGenres } from '../services/genres.js';
 import { tmdbImage, POSTER_SIZE, BACKDROP_SIZE } from '../services/tmdbClient.js';
+import { getSubscribedNames, markOwnership } from '../services/availability.js';
+import { AuthenticatedRequest } from '../middleware/auth.js';
 
 const TRENDING_LIMIT = 24;
 
@@ -106,13 +108,21 @@ export const getMovieDetails = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const movie = await movieService.syncMovieWithDb(tmdbId);
+    const region = ((req.query.region as string) || 'US').toUpperCase();
+    const movie = await movieService.syncMovieWithDb(tmdbId, region);
     if (!movie) {
       res.status(404).json({ error: 'Movie not found' });
       return;
     }
 
-    res.json({ show: movie });
+    // owned is null for an anonymous or never-asked caller, which the client
+    // renders as a plain badge rather than a greyed-out one.
+    const userId = (req as AuthenticatedRequest).user?.userId;
+    const subscribed = userId ? await getSubscribedNames(userId, region) : null;
+
+    res.json({
+      show: { ...movie, availability: markOwnership(movie.availability ?? [], subscribed) },
+    });
   } catch (error) {
     console.error('[moviesController] getMovieDetails error:', error);
     res.status(500).json({ error: 'Failed to fetch movie details', message: (error as Error).message });

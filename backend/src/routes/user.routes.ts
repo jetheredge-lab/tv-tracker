@@ -7,6 +7,7 @@ import {
   triggerCron,
 } from '../controllers/userController.js';
 import { authenticateToken, optionalAuth, requireSelf } from '../middleware/auth.js';
+import { getSubscriptions, putSubscriptions } from '../controllers/subscriptionsController.js';
 
 const router = Router();
 
@@ -19,6 +20,10 @@ router.post('/sync', optionalAuth, syncUser);
 // token and a check that the token belongs to the account being touched.
 router.get('/:userId', authenticateToken, requireSelf, getUserProfile);
 router.patch('/:userId', authenticateToken, requireSelf, updatePreferences);
+
+// Declared before /:userId so the id route cannot swallow them.
+router.get('/:userId/subscriptions', authenticateToken, requireSelf, getSubscriptions);
+router.put('/:userId/subscriptions', authenticateToken, requireSelf, putSubscriptions);
 
 // DELETE /api/users/:userId - required by Google Play for apps with accounts.
 router.delete('/:userId', authenticateToken, requireSelf, deleteAccount);
