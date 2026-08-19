@@ -84,6 +84,9 @@ model Show {
   premiered          DateTime?
   /// Movies: theatrical release. TV keeps using `premiered`.
   releaseDate        DateTime?
+  /// Movies: the streaming/VOD date, which is the one most viewers actually
+  /// wait for. Distinct from the theatrical date and often months later.
+  digitalReleaseDate DateTime?
   /// Movies: feature length. TV runtime is per-episode.
   runtime            Int?
   rating             Float?

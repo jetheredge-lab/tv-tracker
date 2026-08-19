@@ -33,6 +33,27 @@ interface TmdbMovieDetail extends Omit<TmdbMovieSummary, 'genre_ids'> {
  * Unlike shows there is no keyless source, so every method here needs TMDB
  * credentials and says so plainly rather than degrading to something empty.
  */
+/**
+ * TMDB release-date types. A film has several dates and they are not
+ * interchangeable: the cinema date and the streaming date are often months
+ * apart, and for most viewers only the second one is actionable.
+ */
+const RELEASE_TYPE = {
+  PREMIERE: 1,
+  THEATRICAL_LIMITED: 2,
+  THEATRICAL: 3,
+  DIGITAL: 4,
+  PHYSICAL: 5,
+  TV: 6,
+} as const;
+
+interface TmdbReleaseDates {
+  results: Array<{
+    iso_3166_1: string;
+    release_dates: Array<{ type: number; release_date: string }>;
+  }>;
+}
+
 export class MovieService {
   get isConfigured(): boolean {
     return tmdbIsConfigured();
@@ -67,6 +88,51 @@ export class MovieService {
   }
 
   /**
+   * Cinema and streaming dates for one region, whichever TMDB knows.
+   */
+  async getReleaseDates(
+    tmdbId: number,
+    region = 'US'
+  ): Promise<{ theatrical: Date | null; digital: Date | null }> {
+    try {
+      const data = await tmdbGet<TmdbReleaseDates>(`/movie/${tmdbId}/release_dates`);
+      const block = data.results?.find(r => r.iso_3166_1 === region.toUpperCase());
+      if (!block) return { theatrical: null, digital: null };
+
+      /**
+       * Types are tried in PRIORITY order, not merged and sorted by date.
+       * Taking the earliest across all of them lets a festival premiere months
+       * ahead of general release masquerade as "in cinemas" - which is when
+       * almost nobody can actually go and see it.
+       */
+      const firstOfType = (typesByPriority: number[]): Date | null => {
+        for (const type of typesByPriority) {
+          const dates = block.release_dates
+            .filter(d => d.type === type && d.release_date)
+            .map(d => new Date(d.release_date))
+            .filter(d => !Number.isNaN(d.getTime()))
+            .sort((a, b) => a.getTime() - b.getTime());
+          if (dates.length > 0) return dates[0];
+        }
+        return null;
+      };
+
+      return {
+        theatrical: firstOfType([
+          RELEASE_TYPE.THEATRICAL,
+          RELEASE_TYPE.THEATRICAL_LIMITED,
+          RELEASE_TYPE.PREMIERE,
+        ]),
+        // TV counts as "available at home" for anyone without a cinema ticket.
+        digital: firstOfType([RELEASE_TYPE.DIGITAL, RELEASE_TYPE.TV]),
+      };
+    } catch (err) {
+      console.warn(`[MovieService] release dates failed for ${tmdbId}:`, (err as Error).message);
+      return { theatrical: null, digital: null };
+    }
+  }
+
+  /**
    * Persist a film as a `Show` row with mediaType MOVIE - the same table shows
    * live in, which is what makes one unified watchlist possible.
    *
@@ -78,7 +144,11 @@ export class MovieService {
     const detail = await this.getMovieDetails(tmdbId);
     if (!detail) return null;
 
-    const releaseDate = detail.release_date ? new Date(detail.release_date) : null;
+    const dates = await this.getReleaseDates(tmdbId, region);
+    // detail.release_date is TMDB's primary date, which is region-agnostic;
+    // the per-region theatrical date is the better answer when it exists.
+    const releaseDate =
+      dates.theatrical ?? (detail.release_date ? new Date(detail.release_date) : null);
     const fields = {
       mediaType: 'MOVIE' as const,
       title: detail.title,
@@ -89,6 +159,7 @@ export class MovieService {
       genres: normalizeTmdbMovieGenres(detail.genres),
       network: null,
       releaseDate,
+      digitalReleaseDate: dates.digital,
       // `premiered` stays the TV field, but mirroring the release date into it
       // keeps every era/recency scorer working across both media unchanged.
       premiered: releaseDate,

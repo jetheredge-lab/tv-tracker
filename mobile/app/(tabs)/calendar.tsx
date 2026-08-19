@@ -93,13 +93,26 @@ export default function CalendarScreen() {
 
         {/* Episode Cards for this Date */}
         {item.items.map((ep) => {
-          const seasonCode = `S${String(ep.season).padStart(2, '0')}E${String(ep.number).padStart(2, '0')}`;
+          // A film has no season or episode number; its badge says which kind of
+          // release the date is, which is the only thing worth knowing there.
+          const isRelease = ep.kind === 'movie_release';
+          const badge = isRelease
+            ? ep.releaseKind === 'digital'
+              ? 'STREAMING'
+              : 'CINEMA'
+            : `S${String(ep.season).padStart(2, '0')}E${String(ep.number).padStart(2, '0')}`;
           const provider = ep.show.streamingProviders?.[0];
 
           return (
             <TouchableOpacity
               key={ep.id}
-              onPress={() => router.push(`/show/${ep.show.tvmazeId || ep.show.id}`)}
+              onPress={() =>
+                router.push(
+                  isRelease
+                    ? { pathname: '/show/[id]', params: { id: String(ep.show.tmdbId), type: 'movie' } }
+                    : { pathname: '/show/[id]', params: { id: String(ep.show.tvmazeId || ep.show.id) } }
+                )
+              }
               activeOpacity={0.8}
               className="bg-card border border-border/50 rounded-2xl p-3 mb-2.5 flex-row items-center shadow-sm"
             >
@@ -125,12 +138,12 @@ export default function CalendarScreen() {
                     {ep.show.title}
                   </Text>
                   <View className="bg-primary-500/20 px-1.5 py-0.5 rounded">
-                    <Text className="text-primary-400 font-bold text-[10px]">{seasonCode}</Text>
+                    <Text className="text-primary-400 font-bold text-[10px]">{badge}</Text>
                   </View>
                 </View>
 
                 <Text className="text-xs text-zinc-300 font-medium mb-1.5" numberOfLines={1}>
-                  "{ep.title}"
+                  {isRelease ? ep.title : `"${ep.title}"`}
                 </Text>
 
                 <View className="flex-row items-center justify-between">
@@ -164,7 +177,7 @@ export default function CalendarScreen() {
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <Header
         title="Release Calendar"
-        subtitle="Upcoming episode releases from your watchlist"
+        subtitle="Upcoming releases from your watchlist"
       />
 
       {/* Filter Toggle */}
@@ -201,7 +214,7 @@ export default function CalendarScreen() {
               selectedFilter === 'ALL' ? 'text-white' : 'text-zinc-400'
             }`}
           >
-            All Scheduled Episodes
+            Everything Scheduled
           </Text>
         </TouchableOpacity>
       </View>
@@ -229,7 +242,7 @@ export default function CalendarScreen() {
         <EmptyState
           type="calendar"
           title="No scheduled releases"
-          description="None of the shows in your watchlist have scheduled upcoming episodes right now. Add active shows to see their drop dates here."
+          description="Nothing in your watchlist has an upcoming episode or release date right now. Add an active series or an unreleased film to see it here."
           actionLabel="Explore Active Shows"
           onAction={() => router.push('/(tabs)/search')}
         />

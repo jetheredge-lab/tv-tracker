@@ -184,6 +184,49 @@ export class SchedulerService {
       }
     }
 
+    // 3b. Films released today. These carry no episodes, so they are found by
+    // release date rather than by walking the episode table.
+    const releasedToday = await prisma.show.findMany({
+      where: {
+        mediaType: 'MOVIE',
+        OR: [
+          { releaseDate: { gte: new Date(`${todayStr}T00:00:00.000Z`), lt: new Date(`${todayStr}T23:59:59.999Z`) } },
+          { digitalReleaseDate: { gte: new Date(`${todayStr}T00:00:00.000Z`), lt: new Date(`${todayStr}T23:59:59.999Z`) } },
+        ],
+      },
+      include: {
+        availability: { where: { offerType: 'flatrate' } },
+        watchlists: {
+          where: { status: { in: ['WATCHING', 'PLAN_TO_WATCH'] } },
+          include: { user: true },
+        },
+      },
+    });
+
+    for (const movie of releasedToday) {
+      const isDigitalToday =
+        movie.digitalReleaseDate?.toISOString().slice(0, 10) === todayStr;
+      const releaseKind = isDigitalToday ? 'digital' : 'theatrical';
+      const provider = movie.availability[0]?.providerName;
+
+      for (const wl of movie.watchlists) {
+        const user = wl.user;
+        if (!user.pushToken || !user.pushAlertsEnabled) continue;
+        try {
+          await notificationService.sendMovieReleaseNotification(
+            user.pushToken,
+            movie.title,
+            releaseKind,
+            provider,
+            movie.id
+          );
+          notificationsSent++;
+        } catch (err) {
+          console.error(`[SchedulerService] Movie release push failed for "${movie.title}":`, err);
+        }
+      }
+    }
+
     // 4. Dispatch Push and Email notifications to users
     for (const [userId, { user, episodes }] of userEpisodesMap.entries()) {
       // Send Push Notifications

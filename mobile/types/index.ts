@@ -121,6 +121,9 @@ export interface RecommendationSection {
 
 export interface CalendarEpisode {
   id: string;
+  /** A film contributes a release date, not an episode. */
+  kind?: 'episode' | 'movie_release';
+  releaseKind?: 'theatrical' | 'digital' | null;
   season: number;
   number: number;
   title: string;
@@ -131,7 +134,9 @@ export interface CalendarEpisode {
   image?: string | null;
   show: {
     id: string;
-    tvmazeId: number;
+    mediaType?: MediaType | null;
+    tvmazeId: number | null;
+    tmdbId?: number | null;
     title: string;
     posterUrl?: string | null;
     network?: string | null;

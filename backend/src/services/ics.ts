@@ -19,6 +19,7 @@ export class IcsCalendarService {
               orderBy: [{ airdate: 'asc' }, { number: 'asc' }],
             },
             streamingProviders: true,
+            availability: true,
           },
         },
       },
@@ -36,6 +37,46 @@ export class IcsCalendarService {
         .map(sp => sp.providerName + (sp.deepLink ? ` (${sp.deepLink})` : ''))
         .join(', ');
       const location = show.streamingProviders[0]?.providerName || show.network || 'TV';
+
+      // A film contributes release dates rather than episodes. Emitted as
+      // all-day events: nobody needs an 8pm reminder for a cinema release.
+      if (show.mediaType === 'MOVIE') {
+        const releases: Array<{ date: Date | null; kind: string; label: string }> = [
+          { date: show.releaseDate, kind: 'theatrical', label: 'in cinemas' },
+          { date: show.digitalReleaseDate, kind: 'digital', label: 'streaming' },
+        ];
+
+        const seenDates = new Set<string>();
+        for (const rel of releases) {
+          if (!rel.date) continue;
+          const iso = rel.date.toISOString().slice(0, 10);
+          if (seenDates.has(iso)) continue;
+          seenDates.add(iso);
+
+          const [y, mo, d] = iso.split('-').map(Number);
+          const flatrate = show.availability
+            .filter(a => a.offerType === 'flatrate')
+            .map(a => a.providerName)
+            .join(', ');
+
+          let description = `Film: ${show.title}\nRelease: ${rel.label}\n`;
+          if (flatrate) description += `Where to Watch: ${flatrate}\n`;
+          if (show.summary) description += `\nSynopsis:\n${show.summary}\n`;
+          description += `\nTracked via TV Tracker`;
+
+          events.push({
+            uid: `tvtracker-release-${show.id}-${rel.kind}@tvtracker.app`,
+            title: `${show.title} (${rel.label})`,
+            start: [y, mo, d],
+            duration: { days: 1 },
+            description,
+            location: flatrate || 'Cinema',
+            status: 'CONFIRMED',
+            busyStatus: 'FREE',
+          });
+        }
+        continue;
+      }
 
       for (const ep of show.episodes) {
         if (!ep.airdate) continue;

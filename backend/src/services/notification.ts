@@ -72,6 +72,41 @@ export class NotificationService {
 
     return this.sendPushNotifications([message]);
   }
+
+  /**
+   * A film reaching the viewer, which happens twice: once in cinemas and again
+   * when it starts streaming. The second is usually the actionable one, so the
+   * two are worded differently rather than sharing an "it's out" message.
+   */
+  async sendMovieReleaseNotification(
+    pushToken: string,
+    title: string,
+    releaseKind: 'theatrical' | 'digital',
+    providerName?: string,
+    showId?: string
+  ) {
+    if (!Expo.isExpoPushToken(pushToken)) {
+      return null;
+    }
+
+    const whereToWatch = providerName ? ` on ${providerName}` : '';
+    const body =
+      releaseKind === 'digital'
+        ? `${title} is streaming today${whereToWatch}!`
+        : `${title} is in cinemas today!`;
+
+    const message: ExpoPushMessage = {
+      to: pushToken,
+      sound: 'default',
+      title: `🎬 ${title}`,
+      body,
+      data: { showId, releaseKind, type: 'MOVIE_RELEASE' },
+      priority: 'high',
+      channelId: 'episode-drops',
+    };
+
+    return this.sendPushNotifications([message]);
+  }
 }
 
 export const notificationService = new NotificationService();
