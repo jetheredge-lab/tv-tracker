@@ -1,7 +1,25 @@
 import { create } from 'zustand';
-import { WatchlistItem, WatchlistStatus } from '../types';
+import { MediaType, WatchlistItem, WatchlistStatus } from '../types';
 
-export type FilterCategory = 'ALL' | 'WATCHING' | 'COMPLETED' | 'PLAN_TO_WATCH' | 'FAVORITES';
+/**
+ * Identity for a title across both media.
+ *
+ * TVmaze and TMDB number their catalogues independently, so a bare id is
+ * ambiguous - tvmaze 550 and tmdb 550 are different titles entirely. Every
+ * membership check goes through this so a film can never shadow a series.
+ */
+export const titleKey = (
+  title: { mediaType?: MediaType | null; tvmazeId?: number | null; tmdbId?: number | null } | null | undefined
+): string => {
+  if (!title) return '';
+  const isMovie = title.mediaType === 'MOVIE' || (!title.tvmazeId && Boolean(title.tmdbId));
+  return isMovie ? `movie:${title.tmdbId}` : `tv:${title.tvmazeId}`;
+};
+
+export type FilterCategory = 'ALL' | 'WATCHING' | 'FINISHED' | 'PLAN_TO_WATCH' | 'FAVORITES';
+
+/** COMPLETED (series) and WATCHED (films) both mean "done", so one tab covers both. */
+export const FINISHED_STATUSES: WatchlistStatus[] = ['COMPLETED', 'WATCHED'];
 
 interface WatchlistState {
   items: WatchlistItem[];
@@ -12,8 +30,8 @@ interface WatchlistState {
   setWatchlist: (items: WatchlistItem[]) => void;
   addOrUpdateItem: (item: WatchlistItem) => void;
   removeItem: (id: string) => void;
-  isInWatchlist: (tvmazeId: number) => boolean;
-  getWatchlistItemByTvmazeId: (tvmazeId: number) => WatchlistItem | undefined;
+  isInWatchlist: (key: string) => boolean;
+  getWatchlistItemByKey: (key: string) => WatchlistItem | undefined;
 }
 
 export const useWatchlistStore = create<WatchlistState>((set, get) => ({
@@ -28,7 +46,7 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
   addOrUpdateItem: (item) => {
     set((state) => {
       const existingIndex = state.items.findIndex(
-        (i) => i.id === item.id || i.show?.tvmazeId === item.show?.tvmazeId
+        (i) => i.id === item.id || (titleKey(i.show) !== '' && titleKey(i.show) === titleKey(item.show))
       );
       if (existingIndex >= 0) {
         const updated = [...state.items];
@@ -45,11 +63,13 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
     }));
   },
 
-  isInWatchlist: (tvmazeId: number) => {
-    return get().items.some((i) => i.show?.tvmazeId === tvmazeId);
+  isInWatchlist: (key: string) => {
+    if (!key) return false;
+    return get().items.some((i) => titleKey(i.show) === key);
   },
 
-  getWatchlistItemByTvmazeId: (tvmazeId: number) => {
-    return get().items.find((i) => i.show?.tvmazeId === tvmazeId);
+  getWatchlistItemByKey: (key: string) => {
+    if (!key) return undefined;
+    return get().items.find((i) => titleKey(i.show) === key);
   },
 }));

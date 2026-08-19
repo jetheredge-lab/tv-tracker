@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, FlatList, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { Plus, Check, Star, Tv, Flame } from 'lucide-react-native';
 import { apiService } from '../../services/api';
 import { useUserStore } from '../../store/useUserStore';
-import { useWatchlistStore } from '../../store/useWatchlistStore';
+import { titleKey, useWatchlistStore } from '../../store/useWatchlistStore';
 import Header from '../../components/Header';
 import SearchBar from '../../components/SearchBar';
 import EmptyState from '../../components/EmptyState';
@@ -16,7 +16,7 @@ export default function SearchScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { userId, preferredRegion } = useUserStore();
-  const { isInWatchlist, getWatchlistItemByTvmazeId } = useWatchlistStore();
+  const { isInWatchlist, getWatchlistItemByKey } = useWatchlistStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -29,25 +29,63 @@ export default function SearchScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Fetch search results from backend / TVmaze
-  const { data: searchResults = [], isLoading: isSearching } = useQuery({
+  // Television and film are searched separately - TVmaze owns one catalogue,
+  // TMDB the other - then woven together so neither medium is buried below the
+  // fold just because its source answered second.
+  const { data: showResults = [], isLoading: isSearchingShows } = useQuery({
     queryKey: ['shows-search', debouncedQuery],
     queryFn: () => apiService.searchShows(debouncedQuery),
     enabled: debouncedQuery.length > 0,
   });
 
-  // Fetch trending/popular shows for empty search state
-  const { data: trendingShows = [], isLoading: isLoadingTrending } = useQuery({
+  const { data: movieResults = [], isLoading: isSearchingMovies } = useQuery({
+    queryKey: ['movies-search', debouncedQuery],
+    queryFn: () => apiService.searchMovies(debouncedQuery),
+    enabled: debouncedQuery.length > 0,
+  });
+
+  const { data: trendingShows = [], isLoading: isLoadingTrendingShows } = useQuery({
     queryKey: ['shows-trending'],
     queryFn: () => apiService.getTrendingShows(),
     enabled: debouncedQuery.length === 0,
   });
 
+  const { data: trendingMovies = [], isLoading: isLoadingTrendingMovies } = useQuery({
+    queryKey: ['movies-trending'],
+    queryFn: () => apiService.getTrendingMovies(),
+    enabled: debouncedQuery.length === 0,
+  });
+
+  // Round-robin rather than concatenation: appending one list to the other
+  // would push every film below ~12 shows, where nobody scrolls.
+  const interleave = (a: Show[], b: Show[]): Show[] => {
+    const out: Show[] = [];
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if (a[i]) out.push(a[i]);
+      if (b[i]) out.push(b[i]);
+    }
+    return out;
+  };
+
+  const searchResults = useMemo(
+    () => interleave(showResults, movieResults),
+    [showResults, movieResults]
+  );
+  const trendingTitles = useMemo(
+    () => interleave(trendingShows, trendingMovies),
+    [trendingShows, trendingMovies]
+  );
+  const isSearching = isSearchingShows || isSearchingMovies;
+  const isLoadingTrending = isLoadingTrendingShows || isLoadingTrendingMovies;
+
   // Add to Watchlist mutation
   const addMutation = useMutation({
-    mutationFn: (tvmazeId: number) => {
+    mutationFn: (title: Show) => {
       if (!userId) throw new Error('User not initialized');
-      return apiService.addToWatchlist(userId, tvmazeId, 'WATCHING', null, false, preferredRegion);
+      // A film has no episodes to follow, so "watching" it is meaningless -
+      // it goes straight to the plan-to-watch shelf.
+      const status = title.mediaType === 'MOVIE' ? 'PLAN_TO_WATCH' : 'WATCHING';
+      return apiService.addToWatchlist(userId, title, status, null, false, preferredRegion);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchlist', userId] });
@@ -65,27 +103,29 @@ export default function SearchScreen() {
   });
 
   const handleWatchlistToggle = (show: Show) => {
-    const isAdded = isInWatchlist(show.tvmazeId);
-    if (isAdded) {
-      const item = getWatchlistItemByTvmazeId(show.tvmazeId);
-      if (item) {
-        removeMutation.mutate(item.id);
-      }
+    const item = getWatchlistItemByKey(titleKey(show));
+    if (item) {
+      removeMutation.mutate(item.id);
     } else {
-      addMutation.mutate(show.tvmazeId);
+      addMutation.mutate(show);
     }
   };
 
-  const displayedShows = debouncedQuery.length > 0 ? searchResults : trendingShows;
+  const displayedShows = debouncedQuery.length > 0 ? searchResults : trendingTitles;
   const isLoading = debouncedQuery.length > 0 ? isSearching : isLoadingTrending;
 
   const renderShowCard = ({ item }: { item: Show }) => {
-    const isAdded = isInWatchlist(item.tvmazeId);
+    const isAdded = isInWatchlist(titleKey(item));
     const premierYear = item.premiered ? new Date(item.premiered).getFullYear() : null;
+    const isMovie = item.mediaType === 'MOVIE';
 
     return (
       <TouchableOpacity
-        onPress={() => router.push(`/show/${item.tvmazeId}`)}
+        onPress={() =>
+          router.push(
+            isMovie ? `/show/${item.tmdbId}?type=movie` : `/show/${item.tvmazeId}`
+          )
+        }
         activeOpacity={0.8}
         className="bg-card border border-border/50 rounded-2xl p-3 mb-3 mx-4 flex-row items-center"
       >
@@ -193,7 +233,7 @@ export default function SearchScreen() {
       ) : displayedShows.length > 0 ? (
         <FlatList
           data={displayedShows}
-          keyExtractor={(item) => String(item.tvmazeId)}
+          keyExtractor={(item) => titleKey(item)}
           renderItem={renderShowCard}
           contentContainerStyle={{ paddingTop: 4, paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"

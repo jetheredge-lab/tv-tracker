@@ -4,7 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useUserStore } from '../../store/useUserStore';
-import { useWatchlistStore, FilterCategory } from '../../store/useWatchlistStore';
+import {
+  useWatchlistStore,
+  FilterCategory,
+  FINISHED_STATUSES,
+} from '../../store/useWatchlistStore';
 import { apiService } from '../../services/api';
 import Header from '../../components/Header';
 import SearchBar from '../../components/SearchBar';
@@ -71,7 +75,7 @@ export default function WatchlistScreen() {
     return {
       ALL: list.length,
       WATCHING: list.filter((i: WatchlistItem) => i.status === 'WATCHING').length,
-      COMPLETED: list.filter((i: WatchlistItem) => i.status === 'COMPLETED').length,
+      FINISHED: list.filter((i: WatchlistItem) => FINISHED_STATUSES.includes(i.status)).length,
       PLAN_TO_WATCH: list.filter((i: WatchlistItem) => i.status === 'PLAN_TO_WATCH').length,
       FAVORITES: list.filter((i: WatchlistItem) => i.isFavorite).length,
     };
@@ -83,7 +87,7 @@ export default function WatchlistScreen() {
     return list.filter((item: WatchlistItem) => {
       // Category filter
       if (activeFilter === 'WATCHING' && item.status !== 'WATCHING') return false;
-      if (activeFilter === 'COMPLETED' && item.status !== 'COMPLETED') return false;
+      if (activeFilter === 'FINISHED' && !FINISHED_STATUSES.includes(item.status)) return false;
       if (activeFilter === 'PLAN_TO_WATCH' && item.status !== 'PLAN_TO_WATCH') return false;
       if (activeFilter === 'FAVORITES' && !item.isFavorite) return false;
 
@@ -103,7 +107,7 @@ export default function WatchlistScreen() {
   const tabs: Array<{ key: FilterCategory; label: string; count: number }> = [
     { key: 'ALL', label: 'All', count: counts.ALL },
     { key: 'WATCHING', label: 'Watching', count: counts.WATCHING },
-    { key: 'COMPLETED', label: 'Completed', count: counts.COMPLETED },
+    { key: 'FINISHED', label: 'Finished', count: counts.FINISHED },
     { key: 'PLAN_TO_WATCH', label: 'Plan to Watch', count: counts.PLAN_TO_WATCH },
     { key: 'FAVORITES', label: 'Favorites', count: counts.FAVORITES },
   ];

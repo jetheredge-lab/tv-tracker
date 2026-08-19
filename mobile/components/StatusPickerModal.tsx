@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, Modal, TouchableOpacity, TouchableWithoutFeedback } from 'react-native';
 import { Check, Trash2, Eye, Calendar, CheckCircle2, XCircle } from 'lucide-react-native';
-import { WatchlistStatus } from '../types';
+import { MediaType, WatchlistStatus } from '../types';
 
 interface StatusPickerModalProps {
   visible: boolean;
+  /** Films are offered WATCHED, series COMPLETED - never both. */
+  mediaType?: MediaType | null;
   currentStatus?: WatchlistStatus;
   showTitle: string;
   onClose: () => void;
@@ -37,6 +39,12 @@ const STATUS_OPTIONS: Array<{
     icon: (c) => <CheckCircle2 size={18} color={c} />,
   },
   {
+    key: 'WATCHED',
+    label: 'Watched',
+    description: 'Seen it - the film equivalent of completing a series',
+    icon: (c) => <CheckCircle2 size={18} color={c} />,
+  },
+  {
     key: 'DROPPED',
     label: 'Dropped',
     description: 'Stopped watching this show',
@@ -46,12 +54,19 @@ const STATUS_OPTIONS: Array<{
 
 export const StatusPickerModal: React.FC<StatusPickerModalProps> = ({
   visible,
+  mediaType,
   currentStatus,
   showTitle,
   onClose,
   onSelectStatus,
   onRemove,
 }) => {
+  // COMPLETED and WATCHED say the same thing about different media, so only
+  // the one that fits this title is offered.
+  const visibleOptions = STATUS_OPTIONS.filter((o) =>
+    mediaType === 'MOVIE' ? o.key !== 'COMPLETED' : o.key !== 'WATCHED'
+  );
+
   return (
     <Modal
       visible={visible}
@@ -74,7 +89,7 @@ export const StatusPickerModal: React.FC<StatusPickerModalProps> = ({
 
               {/* Status List */}
               <View className="space-y-2 mb-4">
-                {STATUS_OPTIONS.map((opt) => {
+                {visibleOptions.map((opt) => {
                   const isSelected = currentStatus === opt.key;
                   return (
                     <TouchableOpacity

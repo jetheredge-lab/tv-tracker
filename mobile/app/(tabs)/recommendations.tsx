@@ -36,8 +36,8 @@ export default function RecommendationsScreen() {
       if (!userId) throw new Error('User not ready');
       return apiService.addToWatchlist(
         userId,
-        show.tvmazeId,
-        'WATCHING',
+        show,
+        show.mediaType === 'MOVIE' ? 'PLAN_TO_WATCH' : 'WATCHING',
         null,
         false,
         preferredRegion
@@ -53,7 +53,9 @@ export default function RecommendationsScreen() {
   const dismissMutation = useMutation({
     mutationFn: (show: Show) => {
       if (!userId) throw new Error('User not ready');
-      return apiService.dismissRecommendation(userId, show.tvmazeId, show.id);
+      // Films have no tvmazeId; the server resolves the dismissal by showId,
+      // which every title has.
+      return apiService.dismissRecommendation(userId, show.tvmazeId ?? undefined, show.id);
     },
     onMutate: async (dismissedShow) => {
       // Optimistically remove show from current UI sections

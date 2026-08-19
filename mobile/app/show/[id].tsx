@@ -24,7 +24,7 @@ import {
 } from 'lucide-react-native';
 import { apiService } from '../../services/api';
 import { useUserStore } from '../../store/useUserStore';
-import { useWatchlistStore } from '../../store/useWatchlistStore';
+import { titleKey, useWatchlistStore } from '../../store/useWatchlistStore';
 import StreamingBadge from '../../components/StreamingBadge';
 import EpisodeCard from '../../components/EpisodeCard';
 import StatusPickerModal from '../../components/StatusPickerModal';
@@ -35,11 +35,14 @@ import { Episode, Show, StreamingProvider, WatchlistStatus } from '../../types';
 const { width } = Dimensions.get('window');
 
 export default function ShowDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `type=movie` routes the same screen at TMDB instead of TVmaze. A film and
+  // a series can share an id number, so the discriminator travels with it.
+  const { id, type } = useLocalSearchParams<{ id: string; type?: string }>();
+  const isMovie = type === 'movie';
   const router = useRouter();
   const queryClient = useQueryClient();
   const { userId, preferredRegion } = useUserStore();
-  const { isInWatchlist, getWatchlistItemByTvmazeId } = useWatchlistStore();
+  const { isInWatchlist, getWatchlistItemByKey } = useWatchlistStore();
 
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [modalVisible, setModalVisible] = useState(false);
@@ -51,8 +54,8 @@ export default function ShowDetailsScreen() {
     isRefetching,
     refetch,
   } = useQuery({
-    queryKey: ['show-details', id],
-    queryFn: () => apiService.getShowDetails(id),
+    queryKey: ['title-details', isMovie ? 'movie' : 'tv', id],
+    queryFn: () => (isMovie ? apiService.getMovieDetails(id) : apiService.getShowDetails(id)),
     enabled: !!id,
   });
 
@@ -60,12 +63,13 @@ export default function ShowDetailsScreen() {
   const { data: similarShows = [] } = useQuery({
     queryKey: ['show-similar', id],
     queryFn: () => apiService.getSimilarShows(id),
-    enabled: !!id,
+    // /similar is a TVmaze endpoint; there is no film equivalent yet.
+    enabled: !!id && !isMovie,
   });
 
   // Watchlist membership check
-  const isAdded = show ? isInWatchlist(show.tvmazeId) : false;
-  const currentWatchlistItem = show ? getWatchlistItemByTvmazeId(show.tvmazeId) : null;
+  const isAdded = show ? isInWatchlist(titleKey(show)) : false;
+  const currentWatchlistItem = show ? getWatchlistItemByKey(titleKey(show)) : null;
 
   // Add / Update / Remove mutations
   const addMutation = useMutation({
@@ -73,7 +77,7 @@ export default function ShowDetailsScreen() {
       if (!userId || !show) throw new Error('Cannot add');
       return apiService.addToWatchlist(
         userId,
-        show.tvmazeId,
+        show,
         status,
         currentWatchlistItem?.rating,
         currentWatchlistItem?.isFavorite || false,
@@ -363,7 +367,8 @@ export default function ShowDetailsScreen() {
             </View>
           ) : null}
 
-          {/* Season & Episode Guide */}
+          {/* Season & Episode Guide - television only; a film has no episodes */}
+          {!isMovie && (
           <View className="mt-8">
             <Text className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-3">
               Episodes ({show.episodes?.length || 0})
@@ -414,6 +419,7 @@ export default function ShowDetailsScreen() {
               </Text>
             )}
           </View>
+          )}
 
           {/* Similar Shows / Recommendations Carousel */}
           {similarShows.length > 0 && (
@@ -470,6 +476,7 @@ export default function ShowDetailsScreen() {
 
       {/* Status Modal */}
       <StatusPickerModal
+            mediaType={show?.mediaType}
         visible={modalVisible}
         currentStatus={currentWatchlistItem?.status}
         showTitle={show.title}

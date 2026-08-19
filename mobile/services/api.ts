@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  MediaType,
   CalendarEpisode,
   RecommendationSection,
   Show,
@@ -86,6 +87,16 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+/** Enough of a title to address it: exactly one of the two ids is meaningful. */
+export type TitleRef = {
+  mediaType?: MediaType | null;
+  tvmazeId?: number | null;
+  tmdbId?: number | null;
+};
+
+const isMovieRef = (t: TitleRef): boolean =>
+  t.mediaType === 'MOVIE' || (!t.tvmazeId && Boolean(t.tmdbId));
+
 export const apiService = {
   // Shows
   searchShows: async (query: string): Promise<Show[]> => {
@@ -110,6 +121,24 @@ export const apiService = {
     return response.data.results;
   },
 
+  // Movies
+  searchMovies: async (query: string): Promise<Show[]> => {
+    const response = await api.get<{ results: Show[] }>('/api/movies/search', {
+      params: { q: query },
+    });
+    return response.data.results;
+  },
+
+  getTrendingMovies: async (): Promise<Show[]> => {
+    const response = await api.get<{ results: Show[] }>('/api/movies/trending');
+    return response.data.results;
+  },
+
+  getMovieDetails: async (tmdbId: string | number): Promise<Show> => {
+    const response = await api.get<{ show: Show }>(`/api/movies/${tmdbId}`);
+    return response.data.show;
+  },
+
   // Watchlist
   getUserWatchlist: async (userId?: string): Promise<WatchlistItem[]> => {
     const endpoint = userId ? `/api/watchlist/${userId}` : '/api/watchlist';
@@ -117,9 +146,13 @@ export const apiService = {
     return response.data.watchlist;
   },
 
+  /**
+   * One watchlist, both media. Pass the title itself - a Show satisfies
+   * TitleRef - and the right id is sent for whichever catalogue owns it.
+   */
   addToWatchlist: async (
     userId: string,
-    tvmazeId: number,
+    title: TitleRef,
     status: WatchlistStatus = 'WATCHING',
     rating?: number | null,
     isFavorite = false,
@@ -127,7 +160,7 @@ export const apiService = {
   ): Promise<WatchlistItem> => {
     const response = await api.post<{ item: WatchlistItem }>('/api/watchlist', {
       userId,
-      tvmazeId,
+      ...(isMovieRef(title) ? { tmdbId: title.tmdbId } : { tvmazeId: title.tvmazeId }),
       status,
       rating,
       isFavorite,

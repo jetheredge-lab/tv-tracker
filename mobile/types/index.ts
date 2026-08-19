@@ -1,4 +1,14 @@
-export type WatchlistStatus = 'WATCHING' | 'COMPLETED' | 'PLAN_TO_WATCH' | 'DROPPED' | 'ENDED';
+/** WATCHED is the film equivalent of COMPLETED: a movie is watched in one
+ *  sitting, and "completed" describes finishing a run of episodes. */
+export type WatchlistStatus =
+  | 'WATCHING'
+  | 'COMPLETED'
+  | 'WATCHED'
+  | 'PLAN_TO_WATCH'
+  | 'DROPPED'
+  | 'ENDED';
+
+export type MediaType = 'TV' | 'MOVIE';
 
 export interface StreamingProvider {
   id?: string;
@@ -24,7 +34,10 @@ export interface Episode {
 
 export interface Show {
   id: string;
-  tvmazeId: number;
+  /** Which kind of title this is. Absent on older payloads, so treat it as TV. */
+  mediaType?: MediaType | null;
+  /** Null for movies - TVmaze indexes television only. */
+  tvmazeId: number | null;
   tmdbId?: number | null;
   title: string;
   summary?: string | null;
@@ -34,6 +47,10 @@ export interface Show {
   genres: string[];
   network?: string | null;
   premiered?: string | null;
+  /** Movies: theatrical release date. */
+  releaseDate?: string | null;
+  /** Movies: feature length in minutes. */
+  runtime?: number | null;
   rating?: number | null;
   /** Set on recommendation cards: why this show was picked. */
   reason?: string;

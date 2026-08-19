@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Plus, Check, X, Star, Tv, Sparkles } from 'lucide-react-native';
 import { RecommendationSection, Show } from '../types';
 import StreamingBadge from './StreamingBadge';
-import { useWatchlistStore } from '../store/useWatchlistStore';
+import { titleKey, useWatchlistStore } from '../store/useWatchlistStore';
 
 interface RecommendationCarouselProps {
   section: RecommendationSection;
@@ -46,14 +46,14 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
         contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
       >
         {section.shows.map((show) => {
-          const isAdded = isInWatchlist(show.tvmazeId);
+          const isAdded = isInWatchlist(titleKey(show));
           const premierYear = show.premiered
             ? new Date(show.premiered).getFullYear()
             : null;
 
           return (
             <View
-              key={show.tvmazeId}
+              key={titleKey(show)}
               className="w-40 bg-card border border-border/50 rounded-2xl overflow-hidden shadow-md"
             >
               {/* Poster Container */}
