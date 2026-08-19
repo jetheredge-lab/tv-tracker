@@ -10,6 +10,7 @@ const DEVICE_SECRET_KEY = '@tvtracker_device_secret';
 const ICS_TOKEN_KEY = '@tvtracker_ics_token';
 const AUTH_TOKEN_KEY = '@tvtracker_auth_token';
 const AUTH_USER_KEY = '@tvtracker_auth_user';
+export const INVITE_CODE_KEY = '@tvtracker_invite_code';
 
 const toHex = (bytes: Uint8Array): string =>
   Array.from(bytes)
@@ -42,7 +43,11 @@ interface UserState {
   emailAlertsEnabled: boolean;
   preferredRegion: string;
   isInitialized: boolean;
+  /** True when the server refused to create this device's account without an
+   *  invite code. The gate screen collects one and retries. */
+  needsInviteCode: boolean;
   initializeUser: () => Promise<string>;
+  submitInviteCode: (code: string) => Promise<{ success: boolean; error?: string }>;
   setPushToken: (token: string) => Promise<void>;
   updatePreferences: (updates: Partial<{
     email: string | null;
@@ -64,6 +69,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   emailAlertsEnabled: true,
   preferredRegion: 'US',
   isInitialized: false,
+  needsInviteCode: false,
 
   initializeUser: async () => {
     try {
@@ -76,6 +82,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       }
 
       const deviceSecret = await getOrCreateDeviceSecret();
+      const inviteCode = await AsyncStorage.getItem(INVITE_CODE_KEY);
 
       set({
         userId: storedUserId,
@@ -97,6 +104,7 @@ export const useUserStore = create<UserState>((set, get) => ({
           userId: storedUserId,
           deviceSecret,
           preferredRegion: storedRegion,
+          ...(inviteCode ? { inviteCode } : {}),
         });
 
         const { user, token } = response.data;
@@ -118,6 +126,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
         if (user) {
           set({
+            needsInviteCode: false,
             email: user.email,
             pushToken: user.pushToken,
             pushAlertsEnabled: user.pushAlertsEnabled,
@@ -126,12 +135,24 @@ export const useUserStore = create<UserState>((set, get) => ({
             icsToken: user.icsToken ?? null,
           });
         }
-      } catch (backendErr) {
-        console.warn('[useUserStore] Offline or backend sync skipped:', backendErr);
-        // Fall back to the last known feed token so the calendar section
-        // still renders something useful while offline.
-        const cachedIcs = await AsyncStorage.getItem(ICS_TOKEN_KEY);
-        if (cachedIcs) set({ icsToken: cachedIcs });
+      } catch (backendErr: any) {
+        const rejectedForInvite =
+          backendErr?.response?.status === 403 &&
+          backendErr?.response?.data?.code === 'invite_required';
+
+        if (rejectedForInvite) {
+          // Not an outage: this instance is invite-only and this device has no
+          // accepted code yet. Drop the stored one so a wrong code cannot make
+          // the gate loop on itself.
+          await AsyncStorage.removeItem(INVITE_CODE_KEY);
+          set({ needsInviteCode: true });
+        } else {
+          console.warn('[useUserStore] Offline or backend sync skipped:', backendErr);
+          // Fall back to the last known feed token so the calendar section
+          // still renders something useful while offline.
+          const cachedIcs = await AsyncStorage.getItem(ICS_TOKEN_KEY);
+          if (cachedIcs) set({ icsToken: cachedIcs });
+        }
       }
 
       return storedUserId;
@@ -141,6 +162,24 @@ export const useUserStore = create<UserState>((set, get) => ({
       set({ userId: fallbackId, isInitialized: true });
       return fallbackId;
     }
+  },
+
+  /**
+   * Store an access code and retry the bootstrap. initializeUser clears
+   * needsInviteCode on a successful sync, so its value afterwards is the
+   * verdict.
+   */
+  submitInviteCode: async (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) return { success: false, error: 'Enter your access code.' };
+
+    await AsyncStorage.setItem(INVITE_CODE_KEY, trimmed);
+    await get().initializeUser();
+
+    if (get().needsInviteCode) {
+      return { success: false, error: 'That code was not accepted.' };
+    }
+    return { success: true };
   },
 
   setPushToken: async (token: string) => {

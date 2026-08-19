@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import prisma from '../services/prisma.js';
 import schedulerService from '../services/scheduler.js';
-import { signUserToken } from '../config/auth.js';
+import { signUserToken, INVITE_REJECTION, inviteCodeAccepted } from '../config/auth.js';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 
 const SALT_ROUNDS = 10;
@@ -32,6 +32,14 @@ export const syncUser = async (req: AuthenticatedRequest, res: Response): Promis
     }
 
     const existing = await prisma.user.findUnique({ where: { id: userId } });
+
+    // The real front door. A new device row is a new account, so it needs an
+    // invite; an existing one does not, which is how every account created
+    // before the gate keeps working untouched.
+    if (!existing && !inviteCodeAccepted(req.body.inviteCode)) {
+      res.status(403).json(INVITE_REJECTION);
+      return;
+    }
 
     // A valid token for this account is equivalent proof of ownership: a user
     // who signs in on a second device holds the token but not the first

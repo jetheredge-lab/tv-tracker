@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
-import { useUserStore } from './useUserStore';
+import { INVITE_CODE_KEY, useUserStore } from './useUserStore';
 import { UserProfile } from '../types';
 
 const AUTH_TOKEN_KEY = '@tvtracker_auth_token';
@@ -117,15 +117,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   ) => {
     try {
       set({ isLoading: true });
+      // A device that has already synced owns an anonymous account, and that
+      // is where its watchlist lives. Claiming that account in place keeps the
+      // data - /register resolves guests by email, which an anonymous account
+      // does not have, so it would mint a second row and strand the first.
+      const deviceUserId = useUserStore.getState().userId;
+      const deviceToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+      const claiming = Boolean(deviceUserId && deviceToken);
+      const inviteCode = await AsyncStorage.getItem(INVITE_CODE_KEY);
+
       const response = await api.post<{
         token: string;
         user: UserProfile;
         message: string;
-      }>('/api/auth/register', {
+      }>(claiming ? '/api/auth/claim' : '/api/auth/register', {
         email: email.trim(),
         password,
         name: name?.trim() || undefined,
         preferredRegion,
+        ...(inviteCode ? { inviteCode } : {}),
       });
 
       const { token, user } = response.data;

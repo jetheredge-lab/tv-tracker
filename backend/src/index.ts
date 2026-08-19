@@ -79,6 +79,11 @@ app.get(['/api', ...(hasWebBuild ? [] : ['/'])], (_req: Request, res: Response) 
 // Rate limiting, mounted before the router so it also covers 404s under /api.
 app.use('/api', apiLimiter);
 app.use('/api/auth', authLimiter);
+// Device bootstrap is where an invite code would be guessed, and the generous
+// API ceiling leaves room for tens of thousands of attempts. authLimiter only
+// counts FAILURES (skipSuccessfulRequests), so normal launches are unaffected
+// while wrong codes get 20 tries per 15 minutes.
+app.use('/api/users/sync', authLimiter);
 
 // Register API Routes
 app.use('/api', apiRouter);

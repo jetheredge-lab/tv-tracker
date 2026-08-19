@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useUserStore } from '../store/useUserStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { registerForPushNotificationsAsync } from '../services/notifications';
+import { InviteGate } from '../components/InviteGate';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,6 +21,7 @@ const queryClient = new QueryClient({
 
 export default function RootLayout() {
   const { initializeUser, setPushToken } = useUserStore();
+  const needsInviteCode = useUserStore((state) => state.needsInviteCode);
   const { restoreSession } = useAuthStore();
 
   useEffect(() => {
@@ -39,6 +42,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="light" />
+        <View style={{ flex: 1 }}>
         <Stack
           screenOptions={{
             headerStyle: {
@@ -78,6 +82,8 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        {needsInviteCode ? <InviteGate /> : null}
+        </View>
       </QueryClientProvider>
     </SafeAreaProvider>
   );

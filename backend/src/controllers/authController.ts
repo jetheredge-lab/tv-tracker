@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../services/prisma.js';
-import { JWT_SECRET } from '../config/auth.js';
+import { JWT_SECRET, INVITE_REJECTION, inviteCodeAccepted } from '../config/auth.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 
 // Secret is validated once at startup in config/auth.ts.
@@ -19,6 +19,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     if (password.length < 6) {
       res.status(400).json({ error: 'Password must be at least 6 characters long' });
+      return;
+    }
+
+    // Registration mints a brand new account, so it is gated. Signing in is
+    // not: an existing account is proof enough that someone was invited.
+    if (!inviteCodeAccepted(req.body.inviteCode)) {
+      res.status(403).json(INVITE_REJECTION);
       return;
     }
 
@@ -179,5 +186,90 @@ export const getMe = async (req: AuthenticatedRequest, res: Response): Promise<v
   } catch (error) {
     console.error('[authController] getMe error:', error);
     res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+};
+
+/**
+ * Attach an email + password to the account the caller is ALREADY using.
+ *
+ * Every device holds an anonymous account created by /api/users/sync, and that
+ * is where its watchlist lives. `register` resolves an existing guest by
+ * email, but anonymous accounts have no email - so registering from a device
+ * that had a watchlist minted a second row and stranded the first. This claims
+ * the caller's own account in place, which is what "create an account" should
+ * do once a device has already been using the app.
+ *
+ * No invite code: holding a valid token for an account means someone was
+ * already let in.
+ */
+export const claimAccount = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const callerId = req.user?.userId;
+    if (!callerId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { email, password, name, preferredRegion } = req.body;
+
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
+    if (password.length < 6) {
+      res.status(400).json({ error: 'Password must be at least 6 characters long' });
+      return;
+    }
+
+    const me = await prisma.user.findUnique({ where: { id: callerId } });
+    if (!me) {
+      res.status(404).json({ error: 'Account not found' });
+      return;
+    }
+    if (me.passwordHash) {
+      res.status(409).json({
+        error: 'This account already has a password',
+        message: 'Sign in with your existing credentials instead.',
+      });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const taken = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (taken && taken.id !== callerId) {
+      res.status(409).json({ error: 'An account with this email already exists' });
+      return;
+    }
+
+    const user = await prisma.user.update({
+      where: { id: callerId },
+      data: {
+        email: normalizedEmail,
+        passwordHash: await bcrypt.hash(password, 10),
+        ...(name ? { name } : {}),
+        ...(preferredRegion ? { preferredRegion } : {}),
+      },
+    });
+
+    // Same id as before, so the watchlist, ratings and ICS feed all carry over.
+    res.status(200).json({
+      message: 'Account secured successfully',
+      token: jwt.sign(
+        { userId: user.id, email: user.email },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
+      ),
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        preferredRegion: user.preferredRegion,
+        pushAlertsEnabled: user.pushAlertsEnabled,
+        emailAlertsEnabled: user.emailAlertsEnabled,
+      },
+    });
+  } catch (error) {
+    console.error('[authController] claimAccount error:', error);
+    res.status(500).json({ error: 'Could not secure this account', message: (error as Error).message });
   }
 };

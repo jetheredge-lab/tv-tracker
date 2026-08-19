@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { timingSafeEqual } from 'crypto';
 
 /**
  * Fail fast instead of falling back to a hardcoded default.
@@ -32,3 +33,39 @@ export const signUserToken = (userId: string, email?: string | null): string =>
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
   );
+
+/**
+ * Gate on ACCOUNT CREATION, not on sign-in.
+ *
+ * Anyone who finds the hostname could previously provision themselves an
+ * account just by loading the page - /api/users/sync creates the row, and it
+ * has to be unauthenticated because that is how a device bootstraps. Requiring
+ * a signup form would not have changed that: registration is open, so a form
+ * is a speed bump, not a gate. A shared invite code is the actual gate.
+ *
+ * Unset means the instance is open, which is right for a local dev database
+ * and wrong for a public hostname.
+ */
+export const INVITE_CODE: string | null = process.env.SIGNUP_INVITE_CODE?.trim() || null;
+
+export const inviteRequired = (): boolean => INVITE_CODE !== null;
+
+/**
+ * Constant-time compare so the code cannot be recovered a character at a time.
+ * timingSafeEqual throws on a length mismatch, hence the explicit length check
+ * (which leaks only the length, not the content).
+ */
+export const inviteCodeAccepted = (supplied: unknown): boolean => {
+  if (!INVITE_CODE) return true;
+  if (typeof supplied !== 'string') return false;
+  const a = Buffer.from(supplied.trim(), 'utf8');
+  const b = Buffer.from(INVITE_CODE, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
+};
+
+/** The one shape every invite rejection uses, so clients can branch on `code`. */
+export const INVITE_REJECTION = {
+  error: 'Invite required',
+  code: 'invite_required',
+  message: 'This TV Tracker instance is invite-only. Enter your access code to continue.',
+} as const;
