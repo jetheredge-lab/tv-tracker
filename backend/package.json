@@ -1,5 +1,5 @@
 {
-  "name": "tv-tracker-backend",
+  "name": "cuelist-backend",
   "version": "1.0.0",
   "description": "Backend API for Cross-Platform TV Tracker with Express, Prisma, TVmaze, TMDB, JWT Auth and ICS generator",
   "main": "dist/index.js",

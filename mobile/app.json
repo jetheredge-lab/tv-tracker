@@ -1,22 +1,22 @@
 {
   "expo": {
     "name": "CueList",
-    "slug": "tv-tracker",
+    "slug": "cuelist",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "scheme": "tvtracker",
+    "scheme": "cuelist",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tvtracker.app"
+      "bundleIdentifier": "com.cuelist.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
       },
-      "package": "com.tvtracker.app"
+      "package": "com.cuelist.app"
     },
     "web": {
       "favicon": "./assets/favicon.png",

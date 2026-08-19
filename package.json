@@ -1,5 +1,5 @@
 {
-  "name": "tv-tracker-monorepo",
+  "name": "cuelist-monorepo",
   "version": "1.0.0",
   "description": "Cross-Platform TV Show & Streaming Tracker Monorepo with Expo, Node.js Express, Prisma, and TVmaze",
   "private": true,
