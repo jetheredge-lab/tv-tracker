@@ -49,7 +49,7 @@ export default function AuthScreen() {
     } else {
       const result = await register(email, password, name);
       if (result.success) {
-        Alert.alert('Account Created', 'Welcome to TV Tracker!');
+        Alert.alert('Account Created', 'Welcome to CueList!');
         router.replace('/(tabs)');
       } else {
         setErrorMsg(result.error || 'Registration failed.');
@@ -83,7 +83,7 @@ export default function AuthScreen() {
               <Tv size={32} color="#818cf8" />
             </View>
             <Text className="text-3xl font-black text-white tracking-tight">
-              TV Tracker
+              CueList
             </Text>
             <Text className="text-sm text-zinc-400 mt-1 text-center">
               Sync your watchlist, ratings & recommendations across all your devices

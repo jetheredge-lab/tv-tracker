@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TV Tracker",
+    "name": "CueList",
     "slug": "tv-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,13 +14,18 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#09090b"
+        "backgroundColor": "#0F172A"
       },
       "package": "com.tvtracker.app"
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "bundler": "metro",
+      "name": "CueList",
+      "shortName": "CueList",
+      "description": "Track shows, movies and releases. Your entertainment, right on cue.",
+      "themeColor": "#0F172A",
+      "backgroundColor": "#0F172A"
     },
     "plugins": [
       "expo-router",
@@ -28,7 +33,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#6366f1",
+          "color": "#06B6D4",
           "sounds": []
         }
       ],
@@ -37,7 +42,7 @@
         {
           "image": "./assets/splash.png",
           "resizeMode": "contain",
-          "backgroundColor": "#09090b"
+          "backgroundColor": "#0F172A"
         }
       ],
       "expo-font"

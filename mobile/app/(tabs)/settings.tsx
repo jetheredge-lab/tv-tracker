@@ -113,7 +113,7 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     Alert.alert(
       'Sign Out',
-      'Are you sure you want to sign out of your TV Tracker account?',
+      'Are you sure you want to sign out of your CueList account?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -428,7 +428,7 @@ export default function SettingsScreen() {
         {/* API Attribution */}
         <View className="items-center py-4">
           <Text className="text-xs text-zinc-500">
-            TV Tracker v0.3 &bull; Powered by TVmaze, TMDB & Watchmode
+            CueList v0.4 &bull; Powered by TVmaze &amp; TMDB &bull; Streaming availability by JustWatch
           </Text>
         </View>
       </ScrollView>

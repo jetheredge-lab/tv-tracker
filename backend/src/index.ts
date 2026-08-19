@@ -62,7 +62,7 @@ if (hasWebBuild) {
 // API Welcome Route
 app.get(['/api', ...(hasWebBuild ? [] : ['/'])], (_req: Request, res: Response) => {
   res.json({
-    name: 'TV Tracker & Streaming Notification API',
+    name: 'CueList API',
     version: '1.0.0',
     endpoints: {
       health: '/api/health',
@@ -117,7 +117,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 // Start Server and Cron Scheduler
 const server = app.listen(PORT, HOST, () => {
   console.log(`====================================================`);
-  console.log(`🚀 TV Tracker API Server running on port ${PORT}`);
+  console.log(`🚀 CueList API Server running on port ${PORT}`);
   console.log(`🌐 Base URL: http://localhost:${PORT}`);
   console.log(`📅 ICS Feed: http://localhost:${PORT}/api/calendar/:userId/feed.ics`);
   console.log(`====================================================`);

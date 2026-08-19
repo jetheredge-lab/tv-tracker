@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "web:build": "rm -rf .web-build && expo export --platform web --output-dir .web-build --clear && node scripts/inject-web-head.mjs .web-build/index.html && rm -rf dist && mv .web-build dist"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

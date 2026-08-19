@@ -47,7 +47,7 @@ export const InviteGate: React.FC = () => {
             <View className="w-16 h-16 rounded-2xl bg-primary-500/20 border border-primary-500/40 items-center justify-center mb-3">
               <Tv size={32} color="#818cf8" />
             </View>
-            <Text className="text-3xl font-black text-white tracking-tight">TV Tracker</Text>
+            <Text className="text-3xl font-black text-white tracking-tight">CueList</Text>
             <Text className="text-sm text-zinc-400 mt-2 text-center">
               This is a private instance. Enter your access code to set up this device.
             </Text>

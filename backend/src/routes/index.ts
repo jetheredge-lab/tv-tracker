@@ -15,7 +15,7 @@ router.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    service: 'TV Tracker API',
+    service: 'CueList API',
     version: '0.3.0',
   });
 });

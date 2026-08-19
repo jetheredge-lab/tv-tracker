@@ -62,7 +62,7 @@ export class IcsCalendarService {
           let description = `Film: ${show.title}\nRelease: ${rel.label}\n`;
           if (flatrate) description += `Where to Watch: ${flatrate}\n`;
           if (show.summary) description += `\nSynopsis:\n${show.summary}\n`;
-          description += `\nTracked via TV Tracker`;
+          description += `\nTracked via CueList`;
 
           events.push({
             uid: `tvtracker-release-${show.id}-${rel.kind}@tvtracker.app`,
@@ -108,7 +108,7 @@ export class IcsCalendarService {
         if (ep.summary) {
           description += `\nSynopsis:\n${ep.summary}\n`;
         }
-        description += `\nTracked via TV Tracker`;
+        description += `\nTracked via CueList`;
 
         events.push({
           uid: `tvtracker-${ep.id}@tvtracker.app`,
@@ -120,7 +120,7 @@ export class IcsCalendarService {
           url: show.streamingProviders[0]?.deepLink || undefined,
           status: 'CONFIRMED',
           busyStatus: 'FREE',
-          categories: ['TV Shows', 'TV Tracker'],
+          categories: ['TV Shows', 'CueList'],
           alarms: [
             {
               action: 'display',
@@ -148,10 +148,10 @@ export class IcsCalendarService {
         const customCalHeader = [
           'BEGIN:VCALENDAR',
           'VERSION:2.0',
-          'PRODID:-//TV Tracker//EN',
+          'PRODID:-//CueList//EN',
           'CALSCALE:GREGORIAN',
           'METHOD:PUBLISH',
-          'X-WR-CALNAME:TV Tracker Schedule',
+          'X-WR-CALNAME:CueList Schedule',
           'X-WR-TIMEZONE:UTC',
           'X-WR-CALDESC:Your personalized TV show release calendar feed',
         ].join('\r\n');
@@ -166,10 +166,10 @@ export class IcsCalendarService {
     return [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//TV Tracker//EN',
+      'PRODID:-//CueList//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
-      'X-WR-CALNAME:TV Tracker Schedule',
+      'X-WR-CALNAME:CueList Schedule',
       'X-WR-CALDESC:Your personalized TV show release calendar feed',
       'END:VCALENDAR',
     ].join('\r\n');

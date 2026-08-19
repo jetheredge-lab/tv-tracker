@@ -26,7 +26,7 @@ export class EmailService {
         await axios.post(
           'https://api.resend.com/emails',
           {
-            from: `TV Tracker <${this.fromEmail}>`,
+            from: `CueList <${this.fromEmail}>`,
             to: [toEmail],
             subject,
             html,
@@ -94,7 +94,7 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <div class="logo">📺 TV Tracker</div>
+            <div class="logo">🎬 CueList</div>
             <div class="subtitle">Your Daily Show Release Digest</div>
           </div>
           <p style="margin-top: 24px; font-size: 15px; color: #e4e4e7;">
@@ -104,7 +104,7 @@ export class EmailService {
             ${listHtml}
           </table>
           <div style="margin-top: 32px; text-align: center; color: #71717a; font-size: 12px;">
-            You received this because you enabled TV Tracker email alerts.
+            You received this because you enabled CueList email alerts.
           </div>
         </div>
       </body>

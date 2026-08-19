@@ -67,5 +67,5 @@ export const inviteCodeAccepted = (supplied: unknown): boolean => {
 export const INVITE_REJECTION = {
   error: 'Invite required',
   code: 'invite_required',
-  message: 'This TV Tracker instance is invite-only. Enter your access code to continue.',
+  message: 'This CueList instance is invite-only. Enter your access code to continue.',
 } as const;
