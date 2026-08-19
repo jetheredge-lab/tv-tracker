@@ -1,6 +1,7 @@
 # Movies in TV Tracker — scope
 
-**Status:** approved, phase 1 in progress. Written 2026-08-19.
+**Status:** ALL FOUR PHASES SHIPPED 2026-08-19. Kept as the record of why the
+design is what it is; see the section at the end for what changed during the build.
 **Goal:** movies as first-class citizens beside shows in a single unified watchlist, with
 streaming availability that *informs* recommendations without ever gating them.
 
@@ -196,3 +197,42 @@ watchlist; after 2 the badges tell you where to watch it; after 3 the app recomm
 1. **Exact pool thresholds**, once the first catalog sweep reveals the popularity distribution.
 2. **Whether `WATCHED` should also apply to TV** (a limited series is arguably watched, not
    completed). Left alone for now — no migration of existing rows.
+
+
+---
+
+## What changed during the build
+
+Four things the scope got wrong or missed, all found by building it:
+
+1. **Films needed rows of their own.** The scope assumed they would slot into the existing
+   genre rows. They did not: a viewer whose watchlist is all television has a taste profile
+   full of network affinity that no film can match, so genre rows stayed 100% television and
+   the entire movie catalogue was invisible outside "Hidden gems". Hence "Films for you",
+   "New films" and "Included with your services".
+
+2. **Two more vocabulary mismatches, beyond genres.** Language (TVmaze "English" vs TMDB "en")
+   would have applied baseScore's -0.9 miss penalty to every film; series *type* would have
+   applied its -1.0 to all 26k of them. Both silent. The genre mismatch was the one that was
+   easy to see coming; these two were the same bug wearing different clothes.
+
+3. **Popularity scales are not comparable.** TVmaze weight is bounded 0-100, TMDB popularity
+   is unbounded and skewed. Fed in raw, a handful of blockbusters outscore all of television.
+
+4. **Provider names needed the same treatment as genres.** TMDB lists every commercial
+   variant separately - Paramount+ ships as five - so a viewer ticking "Paramount+" would have
+   matched none of them.
+
+The pattern worth remembering: every time two sources describe the same concept, the mismatch
+fails *silently*. Nothing errors; a feature just quietly returns less than it should.
+
+## Known gaps
+
+- The catalog sweep requires `vote_count >= 20`, so **unreleased films are absent from
+  recommendations**. They can be searched, added and tracked - which is all the calendar needs
+  - and a recommender cannot rank on ratings that do not exist yet.
+- `Show.streamingProviders` (the old network heuristic) still exists as a fallback for titles
+  TMDB has no availability for. It could probably go entirely.
+- Availability is refreshed on title sync, not on a schedule. Films move between services
+  constantly, so a periodic refresh job is the natural next step - and it is what would make
+  a "leaving soon" row possible.
