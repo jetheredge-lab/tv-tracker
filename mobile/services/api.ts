@@ -39,6 +39,24 @@ const getBaseUrl = (): string => {
 
 export const API_BASE_URL = getBaseUrl();
 
+// Nothing may go out before /api/users/sync has persisted the JWT: screens
+// gate their queries on `userId`, which the store publishes as soon as the id
+// is known, so the very first watchlist fetch would otherwise race the token
+// and come back 401. useUserStore registers the in-flight sync here.
+let authReady: Promise<void> | null = null;
+
+export const setAuthReady = (pending: Promise<unknown>): void => {
+  // Swallow the rejection: a failed sync (offline) must let requests through
+  // rather than wedge every later call on a permanently pending gate.
+  authReady = pending.then(
+    () => undefined,
+    () => undefined
+  );
+};
+
+// The sync call itself must not wait on the gate it is opening.
+const AUTH_GATE_EXEMPT = ['/api/users/sync'];
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 12000,
@@ -51,6 +69,10 @@ export const api = axios.create({
 // Automatic JWT Authorization Header Interceptor
 api.interceptors.request.use(
   async (config) => {
+    if (authReady && !AUTH_GATE_EXEMPT.some((path) => config.url?.startsWith(path))) {
+      await authReady;
+    }
+
     try {
       const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
       if (token && !config.headers.Authorization) {

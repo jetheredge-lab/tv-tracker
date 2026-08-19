@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
-import { api, API_BASE_URL } from '../services/api';
+import { api, API_BASE_URL, setAuthReady } from '../services/api';
 import { UserProfile } from '../types';
 
 const USER_ID_STORAGE_KEY = '@tvtracker_user_id';
@@ -85,7 +85,11 @@ export const useUserStore = create<UserState>((set, get) => ({
 
       // Sync claims the account and returns the JWT that authorises every
       // other call. The axios interceptor reads it from AUTH_TOKEN_KEY.
-      try {
+      //
+      // The promise handed to setAuthReady has to resolve *after* the token is
+      // on disk, not when the POST resolves - otherwise a request unblocked by
+      // the gate can still read AsyncStorage before the setItem lands.
+      const sync = (async () => {
         const response = await api.post<{
           user: UserProfile & { icsToken?: string | null };
           token: string;
@@ -103,6 +107,14 @@ export const useUserStore = create<UserState>((set, get) => ({
         if (user?.icsToken) {
           await AsyncStorage.setItem(ICS_TOKEN_KEY, user.icsToken);
         }
+
+        return user;
+      })();
+
+      setAuthReady(sync);
+
+      try {
+        const user = await sync;
 
         if (user) {
           set({
