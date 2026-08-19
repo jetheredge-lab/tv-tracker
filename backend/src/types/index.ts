@@ -154,6 +154,8 @@ export interface RecommendationSection {
   };
   shows: Array<{
     id?: string;
+    /** Which catalogue this card came from. Absent on older payloads = TV. */
+    mediaType?: 'TV' | 'MOVIE';
     tvmazeId: number | null;
     tmdbId?: number | null;
     title: string;

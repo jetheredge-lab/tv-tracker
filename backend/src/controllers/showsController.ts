@@ -100,7 +100,7 @@ export const getTrendingShows = async (_req: Request, res: Response): Promise<vo
       const titles = await tmdbService.getTrendingTitles();
       titles.forEach((title, idx) => {
         const match = catalogService.findByTitle(title);
-        if (match) trendingRank.set(match.tvmazeId, titles.length - idx);
+        if (match?.tvmazeId !== null && match) trendingRank.set(match.tvmazeId, titles.length - idx);
       });
     } catch {
       // Enrichment only - the catalog ranking below stands on its own.
@@ -111,7 +111,7 @@ export const getTrendingShows = async (_req: Request, res: Response): Promise<vo
     const scored = pool
       .filter(c => {
         if (!c.posterUrl) return false;
-        if (trendingRank.has(c.tvmazeId)) return true;
+        if (c.tvmazeId !== null && trendingRank.has(c.tvmazeId)) return true;
         if (c.weight < 88) return false;
         // A show that just wrapped is still "what everyone is watching";
         // one that ended a decade ago is not.
@@ -124,21 +124,26 @@ export const getTrendingShows = async (_req: Request, res: Response): Promise<vo
           ? clamp(1 - (currentYear - c.premieredYear) / 12, 0, 1)
           : 0.3;
         const quality = c.rating !== null ? clamp((c.rating - 6.5) / 2, -0.5, 1) : 0;
-        const trend = trendingRank.has(c.tvmazeId)
-          ? 2.5 + trendingRank.get(c.tvmazeId)! / 40
-          : 0;
+        const trend =
+          c.tvmazeId !== null && trendingRank.has(c.tvmazeId)
+            ? 2.5 + trendingRank.get(c.tvmazeId)! / 40
+            : 0;
         return { c, score: c.weight / 100 + 0.9 * quality + 0.8 * recency + trend };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, TRENDING_LIMIT);
 
-    const summaries = await catalogService.getSummaries(scored.map(s => s.c.tvmazeId));
+    // The TV pool always carries a tvmazeId; nullability comes from the shared
+    // candidate shape, which must also describe films.
+    const summaries = await catalogService.getSummaries(
+      scored.map(s => s.c.tvmazeId).filter((id): id is number => id !== null)
+    );
 
     res.json({
       results: scored.map(({ c }) => ({
         tvmazeId: c.tvmazeId,
         title: c.title,
-        summary: summaries.get(c.tvmazeId) || '',
+        summary: (c.tvmazeId !== null ? summaries.get(c.tvmazeId) : '') || '',
         posterUrl: c.posterUrl,
         backdropUrl: c.backdropUrl,
         status: c.status,

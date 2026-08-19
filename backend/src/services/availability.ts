@@ -160,3 +160,70 @@ export const getSubscribedNames = async (
   });
   return new Set(rows.map(r => canonicalProviderName(r.providerName)));
 };
+
+
+/**
+ * Which films are currently included with a given set of services.
+ *
+ * Availability for a whole 26k-title pool cannot be fetched per title - that is
+ * 26,000 requests. TMDB's discover endpoint answers the inverse question
+ * directly ("what is on Netflix and Max right now, most popular first"), which
+ * costs a handful of calls and is exactly what a "included with your
+ * subscriptions" row needs.
+ *
+ * Deliberately shallow: this feeds a twelve-item row and a ranking nudge, not
+ * an exhaustive index.
+ */
+const AVAILABLE_TTL_MS = 6 * 60 * 60 * 1000;
+const AVAILABLE_PAGES = 10;
+
+const availableCache = new Map<string, { expires: number; value: Set<number> }>();
+
+export const getAvailableMovieIds = async (
+  providerIds: number[],
+  region = 'US'
+): Promise<Set<number>> => {
+  if (providerIds.length === 0) return new Set();
+
+  const key = `${region}:${[...providerIds].sort((a, b) => a - b).join(',')}`;
+  const hit = availableCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.value;
+
+  const ids = new Set<number>();
+  for (let page = 1; page <= AVAILABLE_PAGES; page++) {
+    try {
+      const data = await tmdbGet<{ results: Array<{ id: number }>; total_pages: number }>(
+        '/discover/movie',
+        {
+          watch_region: region.toUpperCase(),
+          // "|" is OR in TMDB's filter syntax: on ANY of these services.
+          with_watch_providers: providerIds.join('|'),
+          with_watch_monetization_types: 'flatrate',
+          sort_by: 'popularity.desc',
+          include_adult: false,
+          page,
+        }
+      );
+      for (const m of data.results ?? []) ids.add(m.id);
+      if (page >= (data.total_pages ?? 0)) break;
+    } catch (err) {
+      console.warn('[availability] discover-by-provider failed:', (err as Error).message);
+      break;
+    }
+  }
+
+  availableCache.set(key, { expires: Date.now() + AVAILABLE_TTL_MS, value: ids });
+  return ids;
+};
+
+/** The TMDB provider ids behind the user's saved services. */
+export const getSubscriptionProviderIds = async (
+  userId: string,
+  region = 'US'
+): Promise<number[]> => {
+  const rows = await prisma.userSubscription.findMany({
+    where: { userId, region: region.toUpperCase() },
+    select: { providerId: true },
+  });
+  return rows.map(r => r.providerId);
+};

@@ -19,7 +19,16 @@ const SUMMARY_MAX = 400;
  * those are fetched only for the handful of shows actually returned.
  */
 export interface CandidateShow {
-  tvmazeId: number;
+  /**
+   * Stable identity across both catalogues. TVmaze and TMDB number titles
+   * independently, so a bare id cannot key a mixed pool - tvmaze 550 and tmdb
+   * 550 are different titles entirely.
+   */
+  key: string;
+  mediaType: 'TV' | 'MOVIE';
+  /** Null for films. */
+  tvmazeId: number | null;
+  tmdbId: number | null;
   title: string;
   genres: string[];
   network: string | null;
@@ -158,7 +167,10 @@ export class CatalogService {
       });
 
       const pool: CandidateShow[] = rows.map(r => ({
+        key: candidateKey('TV', r.tvmazeId, null),
+        mediaType: 'TV' as const,
         tvmazeId: r.tvmazeId,
+        tmdbId: null,
         title: r.title,
         genres: r.genres || [],
         network: r.network,
@@ -180,7 +192,7 @@ export class CatalogService {
       const byTitle = new Map<string, CandidateShow[]>();
       const byId = new Map<number, CandidateShow>();
       for (const c of pool) {
-        byId.set(c.tvmazeId, c);
+        if (c.tvmazeId !== null) byId.set(c.tvmazeId, c);
         const key = normalizeTitle(c.title);
         const bucket = byTitle.get(key);
         if (bucket) bucket.push(c);
@@ -255,6 +267,15 @@ function toCatalogRow(s: TVmazeShow & { weight?: number }) {
     posterUrl: s.image?.medium || s.image?.original || null,
     backdropUrl: s.image?.original || null,
   };
+}
+
+/** The one place the mixed-pool key format is defined. */
+export function candidateKey(
+  mediaType: 'TV' | 'MOVIE',
+  tvmazeId: number | null | undefined,
+  tmdbId: number | null | undefined
+): string {
+  return mediaType === 'MOVIE' ? `movie:${tmdbId}` : `tv:${tvmazeId}`;
 }
 
 export function normalizeTitle(title: string): string {

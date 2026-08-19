@@ -21,8 +21,12 @@ export interface TasteProfile {
 
 export interface SeedShow {
   showId: string;
+  /** Mixed-pool identity, so a film and a series can seed side by side. */
+  key: string;
+  mediaType: 'TV' | 'MOVIE';
   /** Null for movies - TVmaze indexes television only. */
   tvmazeId: number | null;
+  tmdbId: number | null;
   title: string;
   genres: string[];
   provider: string | null;
@@ -37,8 +41,10 @@ export interface WatchlistLike {
   isFavorite: boolean;
   show: {
     id: string;
+    mediaType: 'TV' | 'MOVIE';
     /** Null for movies. */
     tvmazeId: number | null;
+    tmdbId: number | null;
     title: string;
     genres: string[];
     network: string | null;
@@ -69,7 +75,7 @@ const DEFAULT_TYPES = ['Scripted', 'Animation', 'Documentary'];
 
 export function buildTasteProfile(
   watchlists: WatchlistLike[],
-  catalogById: (tvmazeId: number) => CandidateShow | undefined
+  resolveCandidate: (show: WatchlistLike['show']) => CandidateShow | undefined
 ): TasteProfile {
   const genreRaw = new Map<string, number>();
   const providerRaw = new Map<string, number>();
@@ -94,10 +100,9 @@ export function buildTasteProfile(
       genreRaw.set(g, (genreRaw.get(g) || 0) + perGenre);
     }
 
-    // A movie has no TVmaze catalog row. Genre, provider and era taste still
-    // accrue from it below - which is the whole point of one shared watchlist -
-    // but the TV-only signals (language, show type) simply do not apply.
-    const catalogEntry = show.tvmazeId !== null ? catalogById(show.tvmazeId) : undefined;
+    // Resolved against whichever catalogue owns the title, so a film
+    // contributes language and era taste exactly as a series does.
+    const catalogEntry = resolveCandidate(show);
     const provider = show.network || catalogEntry?.provider || null;
     if (provider) providerRaw.set(provider, (providerRaw.get(provider) || 0) + weight);
 
@@ -121,7 +126,10 @@ export function buildTasteProfile(
     if (weight >= 1.5 && genres.length > 0) {
       seeds.push({
         showId: show.id,
+        key: catalogEntry?.key ?? `${show.mediaType === 'MOVIE' ? 'movie' : 'tv'}:${show.mediaType === 'MOVIE' ? show.tmdbId : show.tvmazeId}`,
+        mediaType: show.mediaType,
         tvmazeId: show.tvmazeId,
+        tmdbId: show.tmdbId,
         title: show.title,
         genres,
         provider,

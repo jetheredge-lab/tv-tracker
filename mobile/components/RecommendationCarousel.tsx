@@ -12,6 +12,25 @@ interface RecommendationCarouselProps {
   onDismissShow: (show: Show) => void;
 }
 
+/**
+ * A film and a series can share an id number, so the route carries the type.
+ * Built as a pathname/params object rather than a template string: expo-router
+ * types its routes, and a plain string is not assignable to Href.
+ */
+const titleRoute = (show: {
+  mediaType?: string | null;
+  tvmazeId?: number | null;
+  tmdbId?: number | null;
+}) => {
+  const isMovie = show.mediaType === 'MOVIE' || (!show.tvmazeId && Boolean(show.tmdbId));
+  return {
+    pathname: '/show/[id]' as const,
+    params: isMovie
+      ? { id: String(show.tmdbId), type: 'movie' }
+      : { id: String(show.tvmazeId) },
+  };
+};
+
 export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
   section,
   onAddShow,
@@ -58,7 +77,7 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
             >
               {/* Poster Container */}
               <TouchableOpacity
-                onPress={() => router.push(`/show/${show.tvmazeId}`)}
+                onPress={() => router.push(titleRoute(show))}
                 activeOpacity={0.8}
                 className="w-full h-52 bg-zinc-800 relative"
               >
@@ -98,7 +117,7 @@ export const RecommendationCarousel: React.FC<RecommendationCarouselProps> = ({
               {/* Show Info */}
               <View className="p-2.5 justify-between flex-1">
                 <TouchableOpacity
-                  onPress={() => router.push(`/show/${show.tvmazeId}`)}
+                  onPress={() => router.push(titleRoute(show))}
                   activeOpacity={0.8}
                 >
                   <Text

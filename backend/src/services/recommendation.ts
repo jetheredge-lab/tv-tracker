@@ -2,7 +2,9 @@ import prisma from './prisma.js';
 import tmdbService from './tmdb.js';
 import tvmazeService from './tvmaze.js';
 import watchmodeService from './watchmode.js';
-import catalogService, { CandidateShow } from './catalog.js';
+import catalogService, { CandidateShow, candidateKey } from './catalog.js';
+import movieCatalogService from './movieCatalog.js';
+import { getAvailableMovieIds, getSubscriptionProviderIds } from './availability.js';
 import { buildTasteProfile, clamp, jaccard, seededUnit, SeedShow, TasteProfile } from './taste.js';
 import { RecommendationSection } from '../types/index.js';
 
@@ -25,7 +27,9 @@ interface SectionSpec {
 
 const SECTION_SIZE = 12;
 const SECTION_MIN = 4;
-const MAX_SECTIONS = 9;
+// Raised from 9 when films gained rows of their own: the mixed feed carries
+// three more, and the television rows should not be pushed off the end.
+const MAX_SECTIONS = 12;
 const CACHE_TTL_MS = 3 * 60 * 60 * 1000;
 
 const cache = new Map<string, { expires: number; sections: RecommendationSection[] }>();
@@ -48,8 +52,10 @@ export class RecommendationEngineService {
       return cached.sections;
     }
 
-    await catalogService.ensureLoaded();
-    const pool = catalogService.getPool();
+    await Promise.all([catalogService.ensureLoaded(), movieCatalogService.ensureLoaded()]);
+    // One pool, both media. Every genre, era and hidden-gems row therefore
+    // spans film and television without needing a second code path.
+    const pool = [...catalogService.getPool(), ...movieCatalogService.getCandidatePool()];
     if (pool.length === 0) {
       console.warn('[RecommendationEngine] catalog is empty - run `npm run catalog:sync`');
       return [];
@@ -64,12 +70,9 @@ export class RecommendationEngineService {
       prisma.dismissedRecommendation.findMany({ where: { userId }, include: { show: true } }),
     ]);
 
-    // Keyed on tvmazeId because the exclusion is applied against the TV
-    // candidate pool. Movies carry no tvmazeId and can never collide with it,
-    // so they are skipped here rather than forced into the set.
-    const excludedIds = new Set<number>();
-    for (const w of watchlists) if (w.show.tvmazeId !== null) excludedIds.add(w.show.tvmazeId);
-    for (const d of dismissed) if (d.show.tvmazeId !== null) excludedIds.add(d.show.tvmazeId);
+    const excludedIds = new Set<string>();
+    for (const w of watchlists) excludedIds.add(candidateKey(w.show.mediaType, w.show.tvmazeId, w.show.tmdbId));
+    for (const d of dismissed) excludedIds.add(candidateKey(d.show.mediaType, d.show.tvmazeId, d.show.tmdbId));
 
     const taste = buildTasteProfile(
       watchlists.map(w => ({
@@ -78,7 +81,9 @@ export class RecommendationEngineService {
         isFavorite: w.isFavorite,
         show: {
           id: w.show.id,
+          mediaType: w.show.mediaType,
           tvmazeId: w.show.tvmazeId,
+          tmdbId: w.show.tmdbId,
           title: w.show.title,
           genres: w.show.genres || [],
           network: w.show.network,
@@ -86,7 +91,14 @@ export class RecommendationEngineService {
           rating: w.show.rating,
         },
       })),
-      id => catalogService.findById(id)
+      show =>
+        show.mediaType === 'MOVIE'
+          ? movieCatalogService
+              .getCandidatePool()
+              .find(c => c.tmdbId === show.tmdbId)
+          : show.tvmazeId !== null
+            ? catalogService.findById(show.tvmazeId)
+            : undefined
     );
 
     // Title-level exclusion catches the same show listed under a different
@@ -96,16 +108,23 @@ export class RecommendationEngineService {
 
     const dayKey = new Date().toISOString().slice(0, 10);
     const eligible = pool.filter(
-      c => !excludedIds.has(c.tvmazeId) && !excludedTitles.has(c.title.toLowerCase().trim())
+      c => !excludedIds.has(c.key) && !excludedTitles.has(c.title.toLowerCase().trim())
     );
 
     // One base score per candidate, reused by every section.
-    const baseScores = new Map<number, number>();
+    const baseScores = new Map<string, number>();
     for (const c of eligible) {
-      baseScores.set(c.tvmazeId, this.baseScore(c, taste, userId, dayKey));
+      baseScores.set(c.key, this.baseScore(c, taste, userId, dayKey));
     }
 
-    const used = new Set<number>();
+    // Which films are included with the services the viewer pays for. Empty
+    // when they have not told us, in which case nothing below changes - the
+    // subscriptions signal only ever adds, it never filters.
+    const providerIds = await getSubscriptionProviderIds(userId, 'US');
+    const availableMovieIds =
+      providerIds.length > 0 ? await getAvailableMovieIds(providerIds, 'US') : new Set<number>();
+
+    const used = new Set<string>();
     const specs: SectionSpec[] = [];
 
     if (taste.seeds.length > 0) {
@@ -117,6 +136,24 @@ export class RecommendationEngineService {
     }
 
     specs.push(...this.buildGenreSections(taste, eligible, baseScores, used));
+
+    // Films get rows of their own rather than competing inside television-shaped
+    // ones. A viewer whose watchlist is all TV has a taste profile full of
+    // network affinity, which no film can match, so genre rows would stay
+    // all-television forever and the movie catalogue would be invisible.
+    const subscriptionSpec = this.buildSubscriptionSection(
+      eligible,
+      baseScores,
+      used,
+      availableMovieIds
+    );
+    if (subscriptionSpec) specs.push(subscriptionSpec);
+
+    const filmSpec = this.buildFilmsForYouSection(taste, eligible, baseScores, used, availableMovieIds);
+    if (filmSpec) specs.push(filmSpec);
+
+    const theatresSpec = this.buildInCinemasSection(eligible, baseScores, used);
+    if (theatresSpec) specs.push(theatresSpec);
 
     const providerSpec = this.buildProviderSection(taste, eligible, baseScores, used);
     if (providerSpec) specs.push(providerSpec);
@@ -160,11 +197,14 @@ export class RecommendationEngineService {
       : 0.3;
 
     const languageScore = c.language === taste.dominantLanguage ? 0.3 : -0.9;
-    const typeScore = c.type && taste.allowedTypes.has(c.type) ? 0.2 : -1.0;
+    // A film has no series type, and -1.0 for "not Scripted" would bury the
+    // entire movie catalogue beneath television with no visible cause.
+    const typeScore =
+      c.mediaType === 'MOVIE' ? 0.2 : c.type && taste.allowedTypes.has(c.type) ? 0.2 : -1.0;
 
     // Deterministic per-user, per-day nudge: enough to reshuffle the tail of
     // near-ties day to day, not enough to promote a bad match.
-    const jitter = seededUnit(userId, dayKey, c.tvmazeId) * 0.5;
+    const jitter = seededUnit(userId, dayKey, c.key) * 0.5;
 
     // With no watchlist yet, taste weights are all zero - lean on popularity
     // and quality instead of returning noise.
@@ -184,8 +224,8 @@ export class RecommendationEngineService {
 
   private take(
     candidates: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>,
+    baseScores: Map<string, number>,
+    used: Set<string>,
     opts: {
       filter?: (c: CandidateShow) => boolean;
       boost?: (c: CandidateShow) => number;
@@ -197,20 +237,20 @@ export class RecommendationEngineService {
     const scored: ScoredCandidate[] = [];
 
     for (const c of candidates) {
-      if (used.has(c.tvmazeId)) continue;
+      if (used.has(c.key)) continue;
       if (opts.filter && !opts.filter(c)) continue;
       const boost = opts.boost ? opts.boost(c) : 0;
       if (boost === Number.NEGATIVE_INFINITY) continue;
       scored.push({
         show: c,
-        score: (baseScores.get(c.tvmazeId) ?? 0) + boost,
+        score: (baseScores.get(c.key) ?? 0) + boost,
         reason: opts.reason?.(c),
       });
     }
 
     scored.sort((a, b) => b.score - a.score);
     const picks = scored.slice(0, limit);
-    for (const p of picks) used.add(p.show.tvmazeId);
+    for (const p of picks) used.add(p.show.key);
     return picks;
   }
 
@@ -224,7 +264,7 @@ export class RecommendationEngineService {
     const strong = seeds.filter(s => s.weight >= 2.5);
     const eligible = strong.length >= 3 ? strong : seeds;
     return [...eligible]
-      .map(s => ({ s, k: seededUnit(userId, dayKey, s.tvmazeId ?? s.showId) + Math.min(s.weight, 4) / 8 }))
+      .map(s => ({ s, k: seededUnit(userId, dayKey, s.key) + Math.min(s.weight, 4) / 8 }))
       .sort((a, b) => b.k - a.k)
       .slice(0, 3)
       .map(x => x.s);
@@ -233,23 +273,23 @@ export class RecommendationEngineService {
   private async buildSeedSection(
     seed: SeedShow,
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>,
-    watchlists: Array<{ show: { id: string; tvmazeId: number | null; title: string } }>
+    baseScores: Map<string, number>,
+    used: Set<string>,
+    watchlists: Array<{ show: { id: string; mediaType: 'TV' | 'MOVIE'; tvmazeId: number | null; tmdbId: number | null; title: string } }>
   ): Promise<SectionSpec | null> {
     // TMDB, when a key is configured, contributes an editorial "people who
     // watched this also watched" signal that pure genre overlap cannot.
     const tmdbTitles = await tmdbService.getSimilarTitlesForShow(seed.title, seed.genres);
-    const tmdbBoosted = new Map<number, number>();
+    const tmdbBoosted = new Map<string, number>();
     tmdbTitles.forEach((title, idx) => {
       const match = catalogService.findByTitle(title);
-      if (match) tmdbBoosted.set(match.tvmazeId, 3.5 - Math.min(idx, 15) * 0.1);
+      if (match) tmdbBoosted.set(match.key, 3.5 - Math.min(idx, 15) * 0.1);
     });
 
     const picks = this.take(eligible, baseScores, used, {
       boost: c => {
         const overlap = jaccard(seed.genres, c.genres);
-        const tmdbBoost = tmdbBoosted.get(c.tvmazeId) ?? 0;
+        const tmdbBoost = tmdbBoosted.get(c.key) ?? 0;
         // Require *some* connection: shared genre or an explicit TMDB link.
         if (overlap === 0 && tmdbBoost === 0) return Number.NEGATIVE_INFINITY;
         const sameProvider = seed.provider && c.provider === seed.provider ? 0.5 : 0;
@@ -260,7 +300,7 @@ export class RecommendationEngineService {
         return 4.0 * overlap + tmdbBoost + sameProvider + eraGap;
       },
       reason: c => {
-        if (tmdbBoosted.has(c.tvmazeId)) return `Viewers of ${seed.title} also watch this`;
+        if (tmdbBoosted.has(c.key)) return `Viewers of ${seed.title} also watch this`;
         const shared = c.genres.filter(g => seed.genres.includes(g));
         return shared.length > 0 ? `Shares ${shared.slice(0, 2).join(' + ')}` : 'Similar tone';
       },
@@ -268,10 +308,12 @@ export class RecommendationEngineService {
 
     if (picks.length < SECTION_MIN) return null;
 
-    const source = watchlists.find(w => w.show.tvmazeId === seed.tvmazeId)?.show;
+    const source = watchlists.find(
+      w => candidateKey(w.show.mediaType, w.show.tvmazeId, w.show.tmdbId) === seed.key
+    )?.show;
 
     return {
-      id: `rec_because_${seed.tvmazeId}`,
+      id: `rec_because_${seed.key.replace(':', '_')}`,
       kind: 'because_you_watched',
       title: `Because you watched ${seed.title}`,
       subtitle: seed.reasonLabel,
@@ -285,8 +327,8 @@ export class RecommendationEngineService {
   private buildGenreSections(
     taste: TasteProfile,
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>
+    baseScores: Map<string, number>,
+    used: Set<string>
   ): SectionSpec[] {
     const genres = taste.topGenres.slice(0, 3);
     const specs: SectionSpec[] = [];
@@ -315,8 +357,8 @@ export class RecommendationEngineService {
   private buildProviderSection(
     taste: TasteProfile,
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>
+    baseScores: Map<string, number>,
+    used: Set<string>
   ): SectionSpec | null {
     const provider = taste.topProviders[0];
     if (!provider) return null;
@@ -336,10 +378,104 @@ export class RecommendationEngineService {
     };
   }
 
+  /**
+   * Films included with what the viewer already pays for. This is the one place
+   * filtering by availability is legitimate: restriction is the stated point of
+   * the row, and the viewer opted into it by telling us their services.
+   */
+  private buildSubscriptionSection(
+    eligible: CandidateShow[],
+    baseScores: Map<string, number>,
+    used: Set<string>,
+    availableMovieIds: Set<number>
+  ): SectionSpec | null {
+    if (availableMovieIds.size === 0) return null;
+
+    const picks = this.take(eligible, baseScores, used, {
+      filter: c => c.mediaType === 'MOVIE' && c.tmdbId !== null && availableMovieIds.has(c.tmdbId),
+      boost: () => 1.0,
+      reason: () => 'Included with your subscriptions',
+    });
+    if (picks.length < SECTION_MIN) return null;
+
+    return {
+      id: 'rec_included_with_subscriptions',
+      kind: 'subscriptions',
+      title: 'Included with your services',
+      subtitle: 'Films you can start tonight at no extra cost',
+      picks,
+    };
+  }
+
+  /** Films matched to the genres the viewer actually watches, whatever the medium. */
+  private buildFilmsForYouSection(
+    taste: TasteProfile,
+    eligible: CandidateShow[],
+    baseScores: Map<string, number>,
+    used: Set<string>,
+    availableMovieIds: Set<number>
+  ): SectionSpec | null {
+    const genres = new Set(taste.topGenres.slice(0, 4));
+
+    const picks = this.take(eligible, baseScores, used, {
+      filter: c => c.mediaType === 'MOVIE' && (genres.size === 0 || c.genres.some(g => genres.has(g))),
+      // A nudge, never a gate: a film the viewer cannot stream still appears,
+      // just below an equally good one they can.
+      boost: c => (c.tmdbId !== null && availableMovieIds.has(c.tmdbId) ? 0.6 : 0),
+      reason: c => {
+        const hit = c.genres.find(g => genres.has(g));
+        return hit ? `${hit} — the genre you watch most` : 'Picked for you';
+      },
+    });
+    if (picks.length < SECTION_MIN) return null;
+
+    return {
+      id: 'rec_films_for_you',
+      kind: 'films',
+      title: 'Films for you',
+      subtitle:
+        taste.topGenres.length > 0
+          ? `Built from the same taste as your ${taste.topGenres[0].toLowerCase()} shows`
+          : 'Built from your watchlist',
+      picks,
+    };
+  }
+
+  /** Recent releases - the film answer to "new this season". */
+  private buildInCinemasSection(
+    eligible: CandidateShow[],
+    baseScores: Map<string, number>,
+    used: Set<string>
+  ): SectionSpec | null {
+    const cutoff = new Date();
+    cutoff.setUTCMonth(cutoff.getUTCMonth() - 4);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const picks = this.take(eligible, baseScores, used, {
+      filter: c =>
+        c.mediaType === 'MOVIE' &&
+        !!c.premiered &&
+        c.premiered >= cutoffStr &&
+        c.premiered <= todayStr,
+      boost: () => 1.2,
+      reason: c => (c.premieredYear ? `Released ${c.premieredYear}` : 'Just released'),
+    });
+    if (picks.length < SECTION_MIN) return null;
+
+    return {
+      id: 'rec_new_films',
+      kind: 'new_films',
+      title: 'New films',
+      subtitle: 'Released in the last few months',
+      picks,
+    };
+  }
+
   private buildNewThisSeasonSection(
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>
+    baseScores: Map<string, number>,
+    used: Set<string>
   ): SectionSpec {
     const cutoff = new Date();
     cutoff.setUTCMonth(cutoff.getUTCMonth() - 9);
@@ -349,8 +485,13 @@ export class RecommendationEngineService {
     const todayStr = new Date().toISOString().slice(0, 10);
 
     const picks = this.take(eligible, baseScores, used, {
+      // "Still running" is a television idea; a film is never mid-season.
       filter: c =>
-        !!c.premiered && c.premiered >= cutoffStr && c.premiered <= todayStr && c.status !== 'Ended',
+        c.mediaType === 'TV' &&
+        !!c.premiered &&
+        c.premiered >= cutoffStr &&
+        c.premiered <= todayStr &&
+        c.status !== 'Ended',
       boost: c => 1.2 + (c.weight >= 80 ? 0.6 : 0),
       reason: c => (c.premieredYear ? `New in ${c.premieredYear}` : 'Newly premiered'),
     });
@@ -366,21 +507,23 @@ export class RecommendationEngineService {
 
   private async buildTrendingSection(
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>,
+    baseScores: Map<string, number>,
+    used: Set<string>,
     taste: TasteProfile
   ): Promise<SectionSpec> {
     const trendingTitles = await tmdbService.getTrendingTitles();
-    const trendingRank = new Map<number, number>();
+    // tmdbService.getTrendingTitles() is the trending TELEVISION list.
+    const trendingRank = new Map<string, number>();
     trendingTitles.forEach((title, idx) => {
       const match = catalogService.findByTitle(title);
-      if (match) trendingRank.set(match.tvmazeId, trendingTitles.length - idx);
+      if (match) trendingRank.set(match.key, trendingTitles.length - idx);
     });
 
     const picks = this.take(eligible, baseScores, used, {
       // Without a TMDB key, TVmaze's own popularity weight is the trending signal.
-      filter: c => trendingRank.has(c.tvmazeId) || (c.weight >= 90 && c.status !== 'Ended'),
-      boost: c => (trendingRank.has(c.tvmazeId) ? 2.5 + trendingRank.get(c.tvmazeId)! / 40 : 0.8),
+      filter: c =>
+        c.mediaType === 'TV' && (trendingRank.has(c.key) || (c.weight >= 90 && c.status !== 'Ended')),
+      boost: c => (trendingRank.has(c.key) ? 2.5 + trendingRank.get(c.key)! / 40 : 0.8),
       reason: () => 'Popular right now',
     });
 
@@ -393,8 +536,8 @@ export class RecommendationEngineService {
 
   private buildHiddenGemsSection(
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>,
+    baseScores: Map<string, number>,
+    used: Set<string>,
     taste: TasteProfile
   ): SectionSpec {
     const picks = this.take(eligible, baseScores, used, {
@@ -419,8 +562,8 @@ export class RecommendationEngineService {
 
   private buildAcclaimedSection(
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>,
+    baseScores: Map<string, number>,
+    used: Set<string>,
     taste: TasteProfile
   ): SectionSpec {
     const picks = this.take(eligible, baseScores, used, {
@@ -441,8 +584,8 @@ export class RecommendationEngineService {
   private buildEraSection(
     taste: TasteProfile,
     eligible: CandidateShow[],
-    baseScores: Map<number, number>,
-    used: Set<number>
+    baseScores: Map<string, number>,
+    used: Set<string>
   ): SectionSpec | null {
     if (!taste.meanYear) return null;
     const decade = Math.floor(taste.meanYear / 10) * 10;
@@ -473,8 +616,19 @@ export class RecommendationEngineService {
    * streaming badges from the network heuristics (no per-card API spend).
    */
   private async materialize(specs: SectionSpec[]): Promise<RecommendationSection[]> {
-    const ids = [...new Set(specs.flatMap(s => s.picks.map(p => p.show.tvmazeId)))];
-    const summaries = await catalogService.getSummaries(ids);
+    const shows = specs.flatMap(s => s.picks.map(p => p.show));
+    const tvIds = [...new Set(shows.filter(c => c.mediaType === 'TV').map(c => c.tvmazeId!))];
+    const movieIds = [...new Set(shows.filter(c => c.mediaType === 'MOVIE').map(c => c.tmdbId!))];
+
+    const [tvSummaries, movieSummaries] = await Promise.all([
+      catalogService.getSummaries(tvIds),
+      movieCatalogService.getSummaries(movieIds),
+    ]);
+
+    // Re-keyed onto the mixed-pool key so one lookup serves both.
+    const summaries = new Map<string, string>();
+    for (const [id, text] of tvSummaries) summaries.set(candidateKey('TV', id, null), text);
+    for (const [id, text] of movieSummaries) summaries.set(candidateKey('MOVIE', null, id), text);
 
     return specs.map(spec => ({
       id: spec.id,
@@ -486,12 +640,14 @@ export class RecommendationEngineService {
     }));
   }
 
-  private toRecShow(pick: ScoredCandidate, summaries: Map<number, string>): RecShow {
+  private toRecShow(pick: ScoredCandidate, summaries: Map<string, string>): RecShow {
     const c = pick.show;
     return {
+      mediaType: c.mediaType,
       tvmazeId: c.tvmazeId,
+      tmdbId: c.tmdbId,
       title: c.title,
-      summary: summaries.get(c.tvmazeId) || null,
+      summary: summaries.get(c.key) || null,
       posterUrl: c.posterUrl,
       backdropUrl: c.backdropUrl,
       status: c.status || 'Unknown',
@@ -500,7 +656,12 @@ export class RecommendationEngineService {
       premiered: c.premiered,
       rating: c.rating,
       reason: pick.reason,
-      streamingProviders: watchmodeService.getProvidersFromHeuristics(c.title, c.provider, 'US'),
+      // The network heuristic has nothing to work with for a film, and its
+      // generic "Buy / Rent" fallback is noise on a recommendation card.
+      streamingProviders:
+        c.mediaType === 'MOVIE'
+          ? []
+          : watchmodeService.getProvidersFromHeuristics(c.title, c.provider, 'US'),
     };
   }
 

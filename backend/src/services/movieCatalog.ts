@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import prisma from './prisma.js';
-import { normalizeTitle } from './catalog.js';
+import { candidateKey, normalizeTitle, CandidateShow } from './catalog.js';
+import { normalizeLanguage } from './language.js';
 import { normalizeTmdbMovieGenres } from './genres.js';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -277,6 +278,45 @@ export class MovieCatalogService {
 
   getPool(): MovieCandidate[] {
     return this.pool;
+  }
+
+  /**
+   * The film pool projected into the shared candidate shape so one scoring
+   * pipeline covers both media.
+   *
+   * The awkward field is popularity. TVmaze publishes a bounded 0-100 weight;
+   * TMDB popularity is unbounded and heavily skewed (a tentpole release sits
+   * near 2000 while a solid mid-budget film sits near 20). Feeding it in raw
+   * would let a handful of blockbusters outscore the entire television
+   * catalogue, so it is log-compressed onto the same 0-100 scale.
+   */
+  getCandidatePool(): CandidateShow[] {
+    return this.pool.map(m => ({
+      key: candidateKey('MOVIE', null, m.tmdbId),
+      mediaType: 'MOVIE' as const,
+      tvmazeId: null,
+      tmdbId: m.tmdbId,
+      title: m.title,
+      genres: m.genres,
+      network: null,
+      webChannel: null,
+      // A film has no broadcast network. Provider affinity for film is handled
+      // by the viewer's subscriptions instead.
+      provider: null,
+      language: normalizeLanguage(m.language),
+      // Films are exempt from the series "type" term rather than carrying a
+      // type that would never match a viewer's watched types.
+      type: 'Movie',
+      status: 'Released',
+      premiered: m.releaseDate,
+      premieredYear: m.releaseYear,
+      ended: null,
+      rating: m.rating,
+      weight: Math.round(Math.min(Math.log10(Math.max(m.popularity, 1)) / 3, 1) * 100),
+      runtime: m.runtime,
+      posterUrl: m.posterUrl,
+      backdropUrl: m.backdropUrl,
+    }));
   }
 
   get isEmpty(): boolean {
